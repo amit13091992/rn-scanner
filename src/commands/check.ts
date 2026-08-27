@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import { getAllDependencies, readPackageJson } from '../utils/packageJson.js';
 import { detectPackageManager } from '../utils/lockfile.js';
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
@@ -63,13 +64,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         .filter((i) => i.status === 'error')
         .forEach((issue) => {
           printError(`${issue.package}@${issue.version}`);
+          console.log('  ├─ Issues:');
           issue.messages.forEach((msg) => {
-            if (msg.startsWith('✓')) {
-              console.log(`  ${msg}`);
-            } else {
-              console.log(`  ${msg}`);
-            }
+            console.log(`  │  • ${msg}`);
           });
+          console.log('  ├─ Impact: This dependency has critical incompatibilities');
+          console.log('  └─ Recommendation: Update to a compatible version or find an alternative');
         });
     }
 
@@ -79,28 +79,41 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         .filter((i) => i.status === 'warning')
         .forEach((issue) => {
           printWarning(`${issue.package}@${issue.version}`);
-          issue.messages.forEach((msg) => console.log(`  ${msg}`));
+          console.log('  ├─ Issues:');
+          issue.messages.forEach((msg) => console.log(`  │  • ${msg}`));
+          console.log('  ├─ Impact: May cause runtime issues or unexpected behavior');
+          console.log('  └─ Recommendation: Consider upgrading to the latest compatible version');
         });
     }
 
     if (breakingChanges.length > 0) {
       printSection('Breaking Changes');
       breakingChanges.forEach((change) => {
-        const icon = change.severity === 'critical' ? '⚠️  CRITICAL' : '⚡ HIGH';
-        console.log(`${icon}  ${change.package}@${change.version}`);
-        change.changes.forEach((msg) => console.log(`  • ${msg}`));
+        const icon = change.severity === 'critical' ? '🔴 CRITICAL' : '🟠 HIGH';
+        console.log(`\n${icon}  ${change.package}@${change.version}`);
+        console.log('  ├─ Changes:');
+        change.changes.forEach((msg, idx) => {
+          const isLast = idx === change.changes.length - 1;
+          console.log(`  ${isLast ? '└' : '├'}  ✗ ${msg}`);
+        });
+        console.log('  ├─ Severity: ' + (change.severity === 'critical' ? 'CRITICAL - Must be addressed' : 'HIGH - Should be addressed soon'));
+        console.log('  └─ Action: Review migration guide and update your code accordingly');
       });
     }
 
     if (securityVulns.length > 0) {
       printSection('Security Vulnerabilities');
       securityVulns.forEach((vuln) => {
-        console.log(`🔒 ${vuln.package}@${vuln.version}`);
-        vuln.vulnerabilities.forEach((v) => {
+        console.log(`\n🔓 ${vuln.package}@${vuln.version}`);
+        vuln.vulnerabilities.forEach((v, idx) => {
           const severityIcon = v.severity === 'critical' ? '🔴' : v.severity === 'high' ? '🟠' : '🟡';
-          console.log(`  ${severityIcon} ${v.id}: ${v.description}`);
+          const isLast = idx === vuln.vulnerabilities.length - 1;
+          console.log(`  ${isLast ? '└' : '├'}─ ${severityIcon} [${v.severity.toUpperCase()}] ${v.id}`);
+          console.log(`  ${isLast ? '   ' : '│  '} Description: ${v.description}`);
           if (v.fixedVersion) {
-            console.log(`     Fix: upgrade to ${v.fixedVersion}`);
+            console.log(`  ${isLast ? '   ' : '│  '} Fix: Upgrade to ${v.fixedVersion} or later`);
+          } else {
+            console.log(`  ${isLast ? '   ' : '│  '} Fix: No fixed version available yet`);
           }
         });
       });
@@ -108,11 +121,27 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
 
     printSection('Summary');
     printSummary(issues.length, compatible, warnings, errors);
+
     if (breakingChanges.length > 0) {
-      console.log(`⚡ Breaking changes detected: ${breakingChanges.length}`);
+      console.log(`\n⚡ Breaking changes detected: ${breakingChanges.length}`);
     }
     if (securityVulns.length > 0) {
-      console.log(`🔒 Security vulnerabilities: ${securityVulns.length}`);
+      console.log(`🔓 Security vulnerabilities: ${securityVulns.length}`);
+    }
+
+    if (errors > 0 || breakingChanges.length > 0 || securityVulns.length > 0) {
+      console.log(chalk.red.bold('\n⚠️  Action Required:'));
+      if (errors > 0) {
+        console.log(`  • ${errors} dependency error(s) need to be fixed`);
+      }
+      if (breakingChanges.length > 0) {
+        console.log(`  • ${breakingChanges.length} breaking change(s) require code updates`);
+      }
+      if (securityVulns.length > 0) {
+        console.log(`  • ${securityVulns.length} security vulnerability(ies) need patching`);
+      }
+    } else {
+      console.log(chalk.green.bold('\n✨ All dependencies look good!'));
     }
 
     if (options.json) {

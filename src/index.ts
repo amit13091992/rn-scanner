@@ -8,7 +8,7 @@ const program = new Command();
 program
   .name('rn-scanner')
   .description('React Native dependency scanner - compatibility, breaking changes & security vulnerabilities')
-  .version('0.1.0');
+  .version('1.0.0');
 
 program
   .command('check', { isDefault: true })
