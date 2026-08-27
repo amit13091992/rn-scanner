@@ -1,5 +1,5 @@
 {
-  "name": "@amit1392/rn-scanner",
+  "name": "rn-dep-scanner",
   "version": "1.0.0",
   "description": "React Native dependency scanner - compatibility, breaking changes & security vulnerabilities",
   "type": "module",
