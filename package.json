@@ -29,6 +29,12 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "files": [
+    "dist",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "chalk": "^6.0.0",
     "commander": "^15.0.0",

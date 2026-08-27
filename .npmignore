@@ -1,0 +1,13 @@
+src/
+tests/
+.github/
+.gitignore
+.prettierrc
+tsconfig.json
+jest.config.js
+*.md
+!README.md
+node_modules/
+.DS_Store
+*.log
+.env*
