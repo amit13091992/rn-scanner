@@ -6,7 +6,7 @@ import { checkCommand } from './commands/check.js';
 const program = new Command();
 
 program
-  .name('rn-scanner')
+  .name('rn-dep-scanner')
   .description('React Native dependency scanner - compatibility, breaking changes & security vulnerabilities')
   .version('1.0.0');
 

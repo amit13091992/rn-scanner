@@ -1,4 +1,4 @@
-# rn-scanner
+# rn-dep-scanner
 
 A comprehensive React Native dependency scanner that detects compatibility issues, breaking changes, and security vulnerabilities in your project.
 
@@ -14,13 +14,13 @@ A comprehensive React Native dependency scanner that detects compatibility issue
 ## Installation
 
 ```bash
-npm install -g @amit1392/rn-scanner
+npm install -g rn-dep-scanner
 ```
 
 Or use with `npx`:
 
 ```bash
-npx @amit1392/rn-scanner
+npx rn-dep-scanner
 ```
 
 ## Usage
@@ -28,7 +28,7 @@ npx @amit1392/rn-scanner
 ### Basic Check
 
 ```bash
-rn-scanner check
+rn-dep-scanner check
 ```
 
 Output:
@@ -72,7 +72,7 @@ Summary
 For CI/CD integration:
 
 ```bash
-rn-scanner check --json
+rn-dep-scanner check --json
 ```
 
 Returns:
@@ -130,7 +130,7 @@ Returns:
 Exit with code 1 if there are errors or critical issues:
 
 ```bash
-rn-scanner check --strict
+rn-dep-scanner check --strict
 ```
 
 ### Custom Working Directory
@@ -138,7 +138,7 @@ rn-scanner check --strict
 Check a specific directory:
 
 ```bash
-rn-scanner check --cwd /path/to/project
+rn-dep-scanner check --cwd /path/to/project
 ```
 
 ## Scanned Packages
@@ -181,7 +181,7 @@ Clone and install:
 
 ```bash
 git clone <repo>
-cd @amit1392/rn-scanner
+cd @amit1392/rn-dep-scanner
 npm install
 ```
 

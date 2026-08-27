@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "rn-scanner": "dist/index.js"
+    "rn-dep-scanner": "dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
