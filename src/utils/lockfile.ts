@@ -1,7 +1,9 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import type { ParsedLockfile, PackageManager } from '../types/lockfile.js';
+import { NPMLockParser } from '../parsers/npmLockParser.js';
 
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun';
+export type { PackageManager, ParsedLockfile } from '../types/lockfile.js';
 
 export interface LockfileInfo {
   manager: PackageManager;
@@ -30,4 +32,37 @@ export function detectPackageManager(cwd: string = process.cwd()): LockfileInfo 
     manager: 'npm',
     lockfilePath: resolve(cwd, 'package-lock.json'),
   };
+}
+
+export async function parseLockfile(cwd: string = process.cwd()): Promise<ParsedLockfile | null> {
+  try {
+    const { manager, lockfilePath } = detectPackageManager(cwd);
+
+    if (!existsSync(lockfilePath)) {
+      return null;
+    }
+
+    const content = readFileSync(lockfilePath, 'utf-8');
+
+    if (manager === 'npm') {
+      const parser = new NPMLockParser();
+      return parser.parse(content);
+    }
+
+    if (manager === 'yarn') {
+      return null;
+    }
+
+    if (manager === 'pnpm') {
+      return null;
+    }
+
+    if (manager === 'bun') {
+      return null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }

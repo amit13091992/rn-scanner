@@ -72,3 +72,6 @@ android/.gradle/
 android/local.properties
 android/.idea/
 android/*.iml
+
+# Claude development file (for prompt caching, not for git)
+CLAUDE.md

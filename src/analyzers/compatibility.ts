@@ -1,85 +1,120 @@
 import { satisfies } from 'semver';
-import { compatibilityRules, getCompatibilityRules } from '../data/compatibility.js';
-import type { DependencyInfo } from '../types/dependency.js';
-import { cleanVersion } from '../detectors/reactNative.js';
-
-export interface CompatibilityIssue {
-  package: string;
-  version: string;
-  status: 'compatible' | 'warning' | 'error';
-  messages: string[];
-}
+import { getCompatibilityRules } from '../data/compatibility.js';
+import type { DependencyInfo, CompatibilityCheckResult, CompatibilityStatus } from '../types/dependency.js';
+import { normalizeVersion } from '../utils/versionComparison.js';
 
 export function analyzeCompatibility(
   dep: DependencyInfo,
   reactNativeVersion: string | null,
   reactVersion: string | null
-): CompatibilityIssue {
+): CompatibilityCheckResult {
   const rules = getCompatibilityRules(dep.name);
   const messages: string[] = [];
-  let status: 'compatible' | 'warning' | 'error' = 'compatible';
+  let status: CompatibilityStatus = 'compatible';
+  let detectedFrom: 'rules' | 'no-rules' | 'no-lock-file' = 'rules';
 
   if (rules.length === 0) {
     return {
       package: dep.name,
-      version: dep.requestedVersion,
-      status: 'compatible',
-      messages: ['No compatibility rules defined'],
+      version: dep.resolvedVersion || dep.requestedVersion,
+      status: 'not-checked',
+      reason: 'No compatibility rules defined for this package',
+      messages: [],
+      detectedFrom: 'no-rules',
     };
   }
 
-  const cleanDepVersion = cleanVersion(dep.requestedVersion);
+  const depVersion = normalizeVersion(dep.resolvedVersion || dep.requestedVersion);
+
+  if (!depVersion) {
+    return {
+      package: dep.name,
+      version: dep.resolvedVersion || dep.requestedVersion,
+      status: 'error',
+      reason: 'Could not parse package version',
+      messages: ['Invalid version format'],
+      detectedFrom: 'rules',
+    };
+  }
+
+  let foundMatchingRule = false;
 
   for (const rule of rules) {
-    const versionPattern = rule.version.replace('x', '\\d+').replace('.', '\\.');
-    const isVersionMatch = new RegExp(`^${versionPattern}`).test(cleanDepVersion);
+    const ruleVersion = normalizeVersion(rule.version);
+    if (!ruleVersion) continue;
+
+    let isVersionMatch = false;
+
+    if (rule.version.includes('x') || rule.version.includes('*')) {
+      const pattern = rule.version
+        .replace(/\*/g, '\\d+')
+        .replace(/x/g, '\\d+')
+        .replace(/\./g, '\\.');
+      isVersionMatch = new RegExp(`^${pattern}`).test(depVersion);
+    } else {
+      isVersionMatch = satisfies(depVersion, rule.version);
+    }
 
     if (!isVersionMatch) continue;
 
+    foundMatchingRule = true;
+
     if (rule.reactNative && reactNativeVersion) {
-      const cleanRNVersion = cleanVersion(reactNativeVersion);
+      const cleanRNVersion = normalizeVersion(reactNativeVersion);
       try {
         if (!satisfies(cleanRNVersion, rule.reactNative)) {
           status = 'error';
           messages.push(
-            `React Native ${cleanRNVersion} does not satisfy ${rule.reactNative}`
+            `✕ Incompatible with React Native ${cleanRNVersion} (requires ${rule.reactNative})`
           );
         } else {
           messages.push(
             `✓ Compatible with React Native ${cleanRNVersion}`
           );
         }
-      } catch (error) {
+      } catch {
         messages.push(`Could not parse React Native version: ${cleanRNVersion}`);
       }
     }
 
     if (rule.react && reactVersion) {
-      const cleanReactVersion = cleanVersion(reactVersion);
+      const cleanReactVersion = normalizeVersion(reactVersion);
       try {
         if (!satisfies(cleanReactVersion, rule.react)) {
           status = status === 'error' ? 'error' : 'warning';
           messages.push(
-            `React ${cleanReactVersion} does not satisfy ${rule.react}`
+            `⚠ Potential issue with React ${cleanReactVersion} (requires ${rule.react})`
           );
         } else {
           messages.push(`✓ Compatible with React ${cleanReactVersion}`);
         }
-      } catch (error) {
+      } catch {
         messages.push(`Could not parse React version: ${cleanReactVersion}`);
       }
     }
   }
 
+  if (!foundMatchingRule) {
+    return {
+      package: dep.name,
+      version: dep.resolvedVersion || dep.requestedVersion,
+      status: 'not-checked',
+      reason: 'No matching compatibility rule for this version',
+      messages: [],
+      detectedFrom: 'no-rules',
+    };
+  }
+
   if (messages.length === 0) {
-    messages.push('Compatibility check passed');
+    messages.push('✓ Compatibility check passed');
   }
 
   return {
     package: dep.name,
-    version: dep.requestedVersion,
+    version: dep.resolvedVersion || dep.requestedVersion,
     status,
     messages,
+    detectedFrom: 'rules',
   };
 }
 
@@ -87,7 +122,7 @@ export function analyzeAllDependencies(
   dependencies: DependencyInfo[],
   reactNativeVersion: string | null,
   reactVersion: string | null
-): CompatibilityIssue[] {
+): CompatibilityCheckResult[] {
   return dependencies.map((dep) =>
     analyzeCompatibility(dep, reactNativeVersion, reactVersion)
   );

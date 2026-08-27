@@ -51,6 +51,31 @@ export function getAllDependencies(
   return deps;
 }
 
+export async function getAllDependenciesWithResolution(
+  packageJson: PackageJsonContent,
+  cwd: string = process.cwd()
+): Promise<DependencyInfo[]> {
+  const deps = getAllDependencies(packageJson);
+
+  try {
+    const { parseLockfile } = await import('../utils/lockfile.js');
+    const lockfile = await parseLockfile(cwd);
+
+    if (lockfile) {
+      return deps.map(dep => {
+        const resolved = lockfile.dependencies.get(dep.name);
+        return {
+          ...dep,
+          resolvedVersion: resolved?.resolvedVersion,
+        };
+      });
+    }
+  } catch {
+  }
+
+  return deps;
+}
+
 export function getSpecificDependency(
   packageJson: PackageJsonContent,
   packageName: string

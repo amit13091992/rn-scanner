@@ -6,10 +6,20 @@ A comprehensive React Native dependency scanner that detects compatibility issue
 
 - **Compatibility Analysis** — Detects version mismatches with React and React Native
 - **Breaking Change Detection** — Alerts on major breaking changes in dependencies
-- **Security Vulnerability Scanning** — Identifies known CVEs and security issues
+- **Security Vulnerability Scanning** — Identifies known CVEs and security issues (powered by OSV.dev)
+- **Resolved Version Detection** — Analyzes actual installed versions from lock files
 - **Package Manager Detection** — Supports npm, yarn, pnpm, and bun
 - **JSON Output** — Machine-readable output for CI/CD integration
 - **Strict Mode** — Exit codes for automated quality gates
+
+## What's New in v1.1
+
+✅ **OSV.dev Integration** — Real-time vulnerability data instead of hardcoded CVEs  
+✅ **Proper Version Comparison** — Fixed semantic versioning bugs (was using string comparison)  
+✅ **Lockfile Parsing** — Extracts resolved versions from npm package-lock.json  
+✅ **Clear Compatibility Status** — Distinguishes "not checked" from "compatible"  
+✅ **Security References** — Each finding includes CVE/GHSA IDs and source URLs  
+✅ **Offline Mode** — Local cache with 24-hour TTL for when OSV is unavailable
 
 ## Installation
 
@@ -160,11 +170,29 @@ The tool includes compatibility rules and breaking change detection for:
 ## How It Works
 
 1. **Environment Detection** — Reads `package.json` to find React Native and React versions
-2. **Dependency Analysis** — Scans all dependencies for issues
-3. **Compatibility Checking** — Validates version compatibility using semantic versioning
-4. **Breaking Change Detection** — Alerts on major version changes with breaking API modifications
-5. **Security Scanning** — Checks against known CVE database
-6. **Report Generation** — Displays issues in readable format or JSON
+2. **Lockfile Resolution** — Parses npm lock files to extract resolved dependency versions (not just ranges)
+3. **Dependency Analysis** — Scans all dependencies with actual installed versions
+4. **Compatibility Checking** — Validates version compatibility using proper semantic versioning
+5. **Breaking Change Detection** — Alerts on major version changes with breaking API modifications
+6. **Security Scanning** — Fetches vulnerability data from OSV.dev with local caching and fallback
+7. **Report Generation** — Displays issues in readable format or JSON
+
+## Security Data
+
+As of v1.1.0, security vulnerability detection uses:
+- **Primary**: OSV.dev API for real-time vulnerability data (authoritative, community-maintained)
+- **Fallback**: Local database for offline mode (updated with major releases)
+- **Caching**: 24-hour TTL cache stored in `~/.rn-scanner-cache/`
+
+This ensures accurate, trustworthy vulnerability reporting instead of hardcoded CVE lists.
+
+## Resolved vs Requested Versions
+
+The scanner now distinguishes between:
+- **Requested Version** — What's specified in `package.json` (e.g., `^1.2.3`)
+- **Resolved Version** — What's actually installed per lockfile (e.g., `1.2.5`)
+
+Security and compatibility checks operate on resolved versions for accuracy.
 
 ## Scripts
 
