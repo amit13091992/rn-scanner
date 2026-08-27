@@ -181,7 +181,7 @@ Clone and install:
 
 ```bash
 git clone <repo>
-cd @amit1392/rn-dep-scanner
+cd rn-dep-scanner
 npm install
 ```
 
@@ -196,26 +196,6 @@ Build:
 ```bash
 npm run build
 ```
-
-## Roadmap
-
-### v0.2.0
-- Outdated package detection
-- Deprecated package detection
-- Extended vulnerability database
-
-### v0.3.0
-- React Native upgrade simulation (`--target-rn`)
-- Upgrade recommendations
-
-### v0.4.0
-- GitHub Actions integration
-- CI/CD setup guides
-
-### v1.0.0
-- Extended compatibility database (100+ packages)
-- Custom configuration file support
-- Plugin system for custom rules
 
 ## License
 
