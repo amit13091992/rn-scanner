@@ -25,7 +25,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
 
   try {
-    printHeader('RN Scanner');
+    printHeader('RN Deps Scanner');
 
     const packageJson = readPackageJson(cwd);
     const lockfileInfo = detectPackageManager(cwd);
