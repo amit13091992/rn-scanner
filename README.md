@@ -4,19 +4,44 @@ A comprehensive React Native dependency scanner that detects compatibility issue
 
 ## Features
 
+### Core Analysis
 - **Compatibility Analysis** — Detects version mismatches with React and React Native
 - **Breaking Change Detection** — Alerts on major breaking changes in dependencies
 - **Security Vulnerability Scanning** — Identifies known CVEs and security issues (powered by OSV.dev)
 - **Resolved Version Detection** — Analyzes actual installed versions from lock files
+
+### Dependency Intelligence
+- **Version Detection** — Compares declared vs installed vs latest versions
+- **Duplicate Detection** — Finds multiple versions of critical packages (react, react-native)
+- **Peer Conflict Detection** — Identifies incompatible peer dependency requirements
+- **Deprecated Package Detection** — Warns about outdated/superseded packages
+- **React ↔ React Native Compatibility** — Validates major version compatibility
+
+### Developer Experience
+- **Health Score** — 0-100 score with detailed breakdown
+- **Enhanced Output** — Color-coded sections with clear action items
 - **Package Manager Detection** — Supports npm, yarn, pnpm, and bun
 - **JSON Output** — Machine-readable output for CI/CD integration
+- **Outdated Command** — Lists available updates categorized by severity
 - **Strict Mode** — Exit codes for automated quality gates
+
+## What's New in v1.2
+
+✅ **Enhanced CLI Output** — Health score (0-100), colored sections, better formatting  
+✅ **Version Detection** — Shows declared vs installed vs latest for each package  
+✅ **Duplicate Detection** — Identifies multiple versions of same package (critical for react/react-native)  
+✅ **Peer Dependency Conflicts** — Detects incompatible peer dependency requirements  
+✅ **React ↔ React Native Compatibility** — Validates major version compatibility  
+✅ **Deprecated Package Detection** — Warns about deprecated packages with replacements  
+✅ **Multi-Package Manager Support** — Added yarn, pnpm, bun lockfile parsing  
+✅ **New `outdated` Command** — Shows available updates categorized by type (major/minor/patch)  
+✅ **Comprehensive Unit Tests** — 10 passing tests for critical functionality
 
 ## What's New in v1.1
 
 ✅ **OSV.dev Integration** — Real-time vulnerability data instead of hardcoded CVEs  
 ✅ **Proper Version Comparison** — Fixed semantic versioning bugs (was using string comparison)  
-✅ **Lockfile Parsing** — Extracts resolved versions from npm package-lock.json  
+✅ **Lockfile Parsing** — Extracts resolved versions from package lock files  
 ✅ **Clear Compatibility Status** — Distinguishes "not checked" from "compatible"  
 ✅ **Security References** — Each finding includes CVE/GHSA IDs and source URLs  
 ✅ **Offline Mode** — Local cache with 24-hour TTL for when OSV is unavailable
@@ -151,6 +176,69 @@ Check a specific directory:
 rn-dep-scanner check --cwd /path/to/project
 ```
 
+### Enhanced Output Features (v1.2+)
+
+The `check` command now displays:
+
+```
+Health Score: 87/100
+  ├─ ✓ Compatible:    12
+  ├─ ⚠ Warnings:      2
+  └─ ✗ Errors:        1
+
+📦 Total dependencies: 15
+   ├─ Direct: 8
+   ├─ Dev: 6
+   └─ Peer: 1
+
+🔀 Duplicate versions: 1
+⚠️  Peer conflicts: 1
+🔨 Breaking changes: 2
+🔓 Security vulnerabilities: 1
+📦 Deprecated packages: 0
+```
+
+**Version Detection:**
+- Shows declared (package.json) vs installed (lockfile) vs latest versions
+- Highlights mismatches that could cause runtime issues
+
+**Duplicate Detection:**
+- Identifies multiple versions of the same package
+- Marks critical packages (react, react-native) as high priority
+- Helps resolve dependency tree issues
+
+**Peer Conflicts:**
+- Shows exactly which package depends on incompatible versions
+- Explains the version mismatch clearly
+
+### Outdated Command
+
+List packages with available updates:
+
+```bash
+rn-dep-scanner outdated
+```
+
+Categorizes by update type:
+
+```
+🔴 Major Updates (3) - May include breaking changes
+  react-native: 0.73.0 → 0.83.0
+  react: 17.0.2 → 19.2.0
+
+🟡 Minor Updates (2) - New features, backward compatible
+  lodash: 4.17.20 → 4.17.21
+
+🟢 Patch Updates (1) - Bug fixes only
+  axios: 1.6.0 → 1.6.2
+```
+
+**Options:**
+```bash
+rn-dep-scanner outdated --major-only  # Only show major version updates
+rn-dep-scanner outdated --json        # Machine-readable output
+```
+
 ## Scanned Packages
 
 The tool includes compatibility rules and breaking change detection for:
@@ -169,13 +257,25 @@ The tool includes compatibility rules and breaking change detection for:
 
 ## How It Works
 
+### Check Command Flow
+
 1. **Environment Detection** — Reads `package.json` to find React Native and React versions
-2. **Lockfile Resolution** — Parses npm lock files to extract resolved dependency versions (not just ranges)
-3. **Dependency Analysis** — Scans all dependencies with actual installed versions
-4. **Compatibility Checking** — Validates version compatibility using proper semantic versioning
-5. **Breaking Change Detection** — Alerts on major version changes with breaking API modifications
-6. **Security Scanning** — Fetches vulnerability data from OSV.dev with local caching and fallback
-7. **Report Generation** — Displays issues in readable format or JSON
+2. **Lockfile Resolution** — Parses lock files (npm/yarn/pnpm/bun) to extract resolved versions
+3. **Version Analysis** — Compares declared, installed, and latest versions
+4. **Dependency Graph** — Builds tree to identify duplicates and conflicts
+5. **Compatibility Checking** — Validates version compatibility using proper semantic versioning
+6. **React ↔ RN Validation** — Ensures major version compatibility between React and React Native
+7. **Breaking Change Detection** — Alerts on major version changes with breaking API modifications
+8. **Deprecation Check** — Identifies superseded packages and suggests replacements
+9. **Security Scanning** — Fetches vulnerability data from OSV.dev with local caching and fallback
+10. **Report Generation** — Displays issues in readable format or JSON
+
+### Outdated Command Flow
+
+1. **Dependency Loading** — Reads all dependencies from package.json and lockfile
+2. **Version Comparison** — Compares current vs latest available versions
+3. **Categorization** — Classifies updates as major, minor, or patch
+4. **Report Generation** — Displays updates grouped by type
 
 ## Security Data
 
