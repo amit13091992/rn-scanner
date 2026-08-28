@@ -1,5 +1,19 @@
 import chalk from 'chalk';
 
+export interface VersionInfo {
+  declared?: string;
+  installed?: string;
+  latest?: string;
+}
+
+export interface HealthScoreBreakdown {
+  compatible: number;
+  warnings: number;
+  errors: number;
+  notChecked: number;
+  total: number;
+}
+
 export function printHeader(title: string): void {
   const line = '━'.repeat(50);
   console.log('\n' + chalk.cyan(line));
@@ -26,6 +40,38 @@ export function printError(message: string): void {
 
 export function printInfo(message: string): void {
   console.log(chalk.blue(`ℹ ${message}`));
+}
+
+export function printVersionComparison(
+  packageName: string,
+  versions: VersionInfo
+): void {
+  const parts: string[] = [];
+  if (versions.declared) parts.push(`declared: ${chalk.gray(versions.declared)}`);
+  if (versions.installed) parts.push(`installed: ${chalk.blue(versions.installed)}`);
+  if (versions.latest) parts.push(`latest: ${chalk.cyan(versions.latest)}`);
+
+  console.log(`  ${packageName}: ${parts.join(' → ')}`);
+}
+
+export function printHealthScore(breakdown: HealthScoreBreakdown): void {
+  const score = breakdown.total > 0
+    ? Math.round(((breakdown.compatible + breakdown.notChecked) / breakdown.total) * 100)
+    : 100;
+
+  const scoreColor = score >= 80 ? chalk.green : score >= 60 ? chalk.yellow : chalk.red;
+  console.log(`\n${scoreColor.bold(`Health Score: ${score}/100`)}`);
+
+  console.log(chalk.gray('  ├─ ✓ Compatible:    ') + chalk.green(breakdown.compatible));
+  if (breakdown.warnings > 0) {
+    console.log(chalk.gray('  ├─ ⚠ Warnings:      ') + chalk.yellow(breakdown.warnings));
+  }
+  if (breakdown.errors > 0) {
+    console.log(chalk.gray('  ├─ ✗ Errors:        ') + chalk.red(breakdown.errors));
+  }
+  if (breakdown.notChecked > 0) {
+    console.log(chalk.gray('  └─ ? Not Checked:   ') + chalk.gray(breakdown.notChecked));
+  }
 }
 
 export function printTable(

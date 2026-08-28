@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
-    "test": "node --test",
+    "test": "tsx --test test/**/*.test.ts",
     "prepare": "npm run build"
   },
   "keywords": [
