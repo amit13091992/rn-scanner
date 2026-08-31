@@ -25,17 +25,33 @@ A comprehensive React Native dependency scanner that detects compatibility issue
 - **Outdated Command** — Lists available updates categorized by severity
 - **Strict Mode** — Exit codes for automated quality gates
 
-## What's New in v1.2
+## What's New in v1.2 (Phase 2)
 
+### Package Manager Support
+✅ **Multi-Package Manager** — Supports npm, yarn, pnpm, and bun lockfiles  
+✅ **Yarn Lock v2+** — Proper parsing with scoped package support  
+✅ **PNPM Support** — Complete pnpm-lock.yaml parsing  
+✅ **Bun Ready** — Parser ready for bun package manager  
+
+### Enhanced Breaking Changes Database
+✅ **14+ Popular Packages** — Expanded breaking changes detection:
+   - react-native (all versions)
+   - @react-navigation/native
+   - react-native-reanimated
+   - redux, expo, firebase
+   - react-native-gesture-handler
+   - react-native-svg, expo-camera
+   - @react-native-community/async-storage
+   - And more...
+
+### Core Features (Phase 1 + 2)
 ✅ **Enhanced CLI Output** — Health score (0-100), colored sections, better formatting  
 ✅ **Version Detection** — Shows declared vs installed vs latest for each package  
 ✅ **Duplicate Detection** — Identifies multiple versions of same package (critical for react/react-native)  
 ✅ **Peer Dependency Conflicts** — Detects incompatible peer dependency requirements  
 ✅ **React ↔ React Native Compatibility** — Validates major version compatibility  
 ✅ **Deprecated Package Detection** — Warns about deprecated packages with replacements  
-✅ **Multi-Package Manager Support** — Added yarn, pnpm, bun lockfile parsing  
-✅ **New `outdated` Command** — Shows available updates categorized by type (major/minor/patch)  
-✅ **Comprehensive Unit Tests** — 10 passing tests for critical functionality
+✅ **Comprehensive Tests** — 24 unit + integration tests (100% passing)
 
 ## What's New in v1.1
 
@@ -241,19 +257,36 @@ rn-dep-scanner outdated --json        # Machine-readable output
 
 ## Scanned Packages
 
-The tool includes compatibility rules and breaking change detection for:
+The tool includes breaking change detection and compatibility analysis for:
 
-- `react-native` (0.71, 0.72, 0.73+)
-- `react-native-reanimated` (3.x, 4.x)
+### React Native Core
+- `react-native` (0.71+)
+- `react` (16.x, 17.x, 18.x, 19.x)
+
+### Navigation & UI
+- `@react-navigation/native` (6.x, 7.x)
 - `react-native-screens` (3.x, 4.x)
 - `react-native-gesture-handler` (2.x, 3.x)
 - `react-native-safe-area-context` (4.x)
-- `react-native-vector-icons` (10.x)
-- `@react-navigation/native` (6.x, 7.x)
-- `@react-native-async-storage/async-storage` (1.x)
+
+### Animations & Graphics
+- `react-native-reanimated` (3.x, 4.x)
+- `react-native-svg` (15.x+)
 - `react-native-vision-camera` (3.x, 4.x)
-- `react-native-webview` (11.x)
+
+### State Management & Backend
+- `redux` (5.x+)
+- `firebase` (10.x+)
+- `expo` (50.x+)
+- `expo-camera` (14.x+)
+
+### Storage & Utils
+- `@react-native-community/async-storage` (2.x+)
+- `react-native-webview` (11.x+)
+- `react-native-vector-icons` (10.x)
 - `axios`, `lodash`, and more
+
+All critical packages are scanned for version compatibility, breaking changes, and peer dependency conflicts.
 
 ## How It Works
 
