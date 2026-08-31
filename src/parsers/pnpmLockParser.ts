@@ -8,63 +8,39 @@ export function parsePnpmLock(cwd: string): ParsedLockfile {
     const content = readFileSync(pnpmLockPath, 'utf-8');
 
     const dependencies = new Map<string, ResolvedDependency>();
-
     const lines = content.split('\n');
-    let inDeps = false;
+
     let i = 0;
+    let inDependencies = false;
 
     while (i < lines.length) {
       const line = lines[i];
+      const trimmedLine = line.trim();
 
-      if (line === 'dependencies:') {
-        inDeps = true;
+      if (trimmedLine === 'dependencies:') {
+        inDependencies = true;
         i++;
         continue;
       }
 
-      if (inDeps && line.startsWith('  ') && !line.startsWith('    ')) {
-        const match = line.match(/^  '?(.+?)'?:\s*$/);
-        if (match) {
-          const packageName = match[1];
-          i++;
+      if (inDependencies) {
+        if (!line.startsWith(' ')) {
+          inDependencies = false;
+        } else if (line.startsWith('  ') && !line.startsWith('    ') && trimmedLine) {
+          const match = line.match(/^  '?([^':\s]+)'?:\s*(.+)?$/);
+          if (match) {
+            const packageName = match[1];
+            const inlineVersion = match[2]?.trim();
 
-          let version: string | undefined;
-          while (i < lines.length) {
-            const contentLine = lines[i];
-            if (!contentLine.startsWith('    ')) {
-              break;
+            if (inlineVersion) {
+              dependencies.set(packageName, {
+                name: packageName,
+                requestedVersion: inlineVersion,
+                resolvedVersion: inlineVersion,
+              });
             }
-
-            if (contentLine.includes('specifier:')) {
-              const specMatch = contentLine.match(/specifier:\s*(.+)/);
-              if (specMatch) {
-                version = specMatch[1].trim();
-              }
-            }
-
-            if (contentLine.includes('version:')) {
-              const verMatch = contentLine.match(/version:\s*(.+)/);
-              if (verMatch) {
-                version = verMatch[1].trim();
-              }
-            }
-
-            i++;
           }
-
-          if (version) {
-            dependencies.set(packageName, {
-              name: packageName,
-              requestedVersion: version,
-              resolvedVersion: version,
-            });
-          }
-          continue;
         }
-      }
-
-      if (inDeps && !line.startsWith('  ')) {
-        inDeps = false;
       }
 
       i++;

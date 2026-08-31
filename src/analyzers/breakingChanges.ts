@@ -108,6 +108,87 @@ const breakingChangeDatabase: BreakingChange[] = [
       'Changed action dispatching mechanism',
     ],
   },
+  {
+    package: 'redux',
+    introducedInVersion: '5.0.0',
+    affectedVersions: ['>=5.0.0'],
+    severity: 'high',
+    changes: [
+      'Dropped support for Node.js < 18',
+      'Changed TypeScript types structure',
+      'Removed old middleware API',
+    ],
+    migrationGuide: 'https://redux.js.org/usage/store-setup',
+  },
+  {
+    package: 'expo',
+    introducedInVersion: '50.0.0',
+    affectedVersions: ['>=50.0.0'],
+    severity: 'high',
+    changes: [
+      'Removed EAS Build v1 support',
+      'Changed app.json schema',
+      'Requires SDK 50+ React Native version',
+    ],
+    migrationGuide: 'https://docs.expo.dev/home/',
+  },
+  {
+    package: 'react-native-gesture-handler',
+    introducedInVersion: '3.0.0',
+    affectedVersions: ['>=3.0.0'],
+    severity: 'high',
+    changes: [
+      'Changed native module initialization',
+      'Removed old touch handling',
+      'Modified gesture state API',
+    ],
+    migrationGuide: 'https://docs.swmansion.com/react-native-gesture-handler/docs/upgrade-guide',
+  },
+  {
+    package: 'react-native-svg',
+    introducedInVersion: '15.0.0',
+    affectedVersions: ['>=15.0.0'],
+    severity: 'medium',
+    changes: [
+      'Updated SVG spec compliance',
+      'Changed prop naming conventions',
+      'Modified viewBox handling',
+    ],
+  },
+  {
+    package: 'expo-camera',
+    introducedInVersion: '14.0.0',
+    affectedVersions: ['>=14.0.0'],
+    severity: 'high',
+    changes: [
+      'Removed deprecated permissions API',
+      'Changed camera types structure',
+      'Modified flash mode options',
+    ],
+  },
+  {
+    package: 'firebase',
+    introducedInVersion: '10.0.0',
+    affectedVersions: ['>=10.0.0'],
+    severity: 'high',
+    changes: [
+      'Removed compat API',
+      'Changed import paths',
+      'Modified auth state handling',
+    ],
+    migrationGuide: 'https://firebase.google.com/docs/web/modular-upgrade',
+  },
+  {
+    package: '@react-native-community/async-storage',
+    introducedInVersion: '2.0.0',
+    affectedVersions: ['>=2.0.0'],
+    severity: 'medium',
+    changes: [
+      'Changed error handling',
+      'Removed promise-based batch operations',
+      'Modified multiGet/multiSet API',
+    ],
+  },
 ];
 
 export function detectBreakingChanges(dep: DependencyInfo): BreakingChangeCheckResult {
