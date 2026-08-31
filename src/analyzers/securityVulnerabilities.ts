@@ -7,6 +7,11 @@ export interface SecurityFinding {
   vulnerabilities: DetectionResult;
 }
 
+export interface SecurityAnalysisResult {
+  findings: SecurityFinding[];
+  error?: { message: string };
+}
+
 let osvClientInstance: OSVClient | null = null;
 
 function getOSVClient(): OSVClient {
@@ -18,13 +23,13 @@ function getOSVClient(): OSVClient {
 
 export async function analyzeSecurityVulnerabilities(
   dependencies: DependencyInfo[]
-): Promise<SecurityFinding[]> {
+): Promise<SecurityAnalysisResult> {
   const osvClient = getOSVClient();
 
   try {
     const results = await osvClient.fetchVulnerabilities(dependencies);
 
-    return Array.from(results.entries()).map(([packageName, detection]) => {
+    const findings = Array.from(results.entries()).map(([packageName, detection]) => {
       const dep = dependencies.find(d => d.name === packageName);
       return {
         package: packageName,
@@ -32,8 +37,14 @@ export async function analyzeSecurityVulnerabilities(
         vulnerabilities: detection,
       };
     });
+
+    return { findings };
   } catch (error) {
-    console.warn(`Security analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    return [];
+    return {
+      findings: [],
+      error: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+    };
   }
 }

@@ -55,9 +55,16 @@ export function printVersionComparison(
 }
 
 export function printHealthScore(breakdown: HealthScoreBreakdown): void {
-  const score = breakdown.total > 0
-    ? Math.round(((breakdown.compatible + breakdown.notChecked) / breakdown.total) * 100)
-    : 100;
+  const analyzed = breakdown.total - breakdown.notChecked;
+  let score = 100;
+
+  if (analyzed > 0) {
+    const good = breakdown.compatible;
+    const bad = breakdown.warnings + breakdown.errors;
+    score = Math.round((good / (good + bad)) * 100);
+  } else if (breakdown.total > 0) {
+    score = 0;
+  }
 
   const scoreColor = score >= 80 ? chalk.green : score >= 60 ? chalk.yellow : chalk.red;
   console.log(`\n${scoreColor.bold(`Health Score: ${score}/100`)}`);
