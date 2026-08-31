@@ -1,0 +1,36 @@
+lockfileVersion: 5.4
+
+specifiers:
+  '@react-navigation/native': ^7.0.0
+  chalk: ^5.0.0
+  react: ^18.0.0
+  react-native: 0.72.0
+
+dependencies:
+  '@react-navigation/native': 7.1.5
+  chalk: 5.3.0
+  react: 18.2.0
+  react-native: 0.72.0
+
+packages:
+  /@react-navigation/native@7.1.5:
+    version: 7.1.5
+    resolution: '{@react-navigation/native@7.1.5}'
+    dependencies:
+      react: 18.2.0
+    dev: false
+
+  /chalk@5.3.0:
+    version: 5.3.0
+    resolution: '{chalk@5.3.0}'
+    dev: false
+
+  /react@18.2.0:
+    version: 18.2.0
+    resolution: '{react@18.2.0}'
+    dev: false
+
+  /react-native@0.72.0:
+    version: 0.72.0
+    resolution: '{react-native@0.72.0}'
+    dev: false
