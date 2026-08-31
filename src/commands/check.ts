@@ -68,7 +68,6 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       rnInfo.react
     );
     const breakingChangesResults = analyzeBreakingChanges(dependencies);
-    const securityVulns = await analyzeSecurityVulnerabilities(dependencies);
 
     const compatible = compatibilityResults.filter((i) => i.status === 'compatible').length;
     const notChecked = compatibilityResults.filter((i) => i.status === 'not-checked').length;
@@ -170,32 +169,6 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       });
     }
 
-    if (securityVulns.length > 0) {
-      printSection('Security Vulnerabilities');
-      securityVulns.forEach((vuln) => {
-        console.log(`\n🔓 ${vuln.package}@${vuln.version}`);
-        vuln.vulnerabilities.vulnerabilities.forEach((v, idx) => {
-          const severityIcon = v.severity === 'critical' ? '🔴' : v.severity === 'high' ? '🟠' : '🟡';
-          const isLast = idx === vuln.vulnerabilities.vulnerabilities.length - 1;
-          console.log(`  ${isLast ? '└' : '├'}─ ${severityIcon} [${v.severity.toUpperCase()}] ${v.id}`);
-          console.log(`  ${isLast ? '   ' : '│  '} Description: ${v.description}`);
-          if (v.fixedVersion) {
-            console.log(`  ${isLast ? '   ' : '│  '} Fix: Upgrade to ${v.fixedVersion} or later`);
-          } else if (v.fixedVersions?.length) {
-            console.log(`  ${isLast ? '   ' : '│  '} Fix: Upgrade to ${v.fixedVersions[0]} or later`);
-          } else {
-            console.log(`  ${isLast ? '   ' : '│  '} Fix: No fixed version available yet`);
-          }
-          if (v.references.length > 0) {
-            console.log(`  ${isLast ? '   ' : '│  '} References:`);
-            v.references.forEach((ref, refIdx) => {
-              const isLastRef = refIdx === v.references.length - 1;
-              console.log(`  ${isLast ? '   ' : '│  '} ${isLastRef ? '└─' : '├─'} ${ref.url}`);
-            });
-          }
-        });
-      });
-    }
 
     printSection('Summary');
     const healthBreakdown: HealthScoreBreakdown = {
@@ -207,7 +180,8 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     };
     printHealthScore(healthBreakdown);
 
-    console.log(chalk.gray('\n─'.repeat(50)));
+    const dashLine = '─'.repeat(50);
+    console.log(chalk.gray(`\n${dashLine}`));
     console.log(`📦 Total dependencies: ${dependencies.length}`);
     console.log(`   ├─ Direct: ${dependencies.filter(d => d.type === 'dependency').length}`);
     console.log(`   ├─ Dev: ${dependencies.filter(d => d.type === 'devDependency').length}`);
@@ -227,15 +201,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     if (detectedBreakingChanges.length > 0) {
       console.log(`🔨 Breaking changes: ${detectedBreakingChanges.length}`);
     }
-    if (securityVulns.length > 0) {
-      console.log(`🔓 Security vulnerabilities: ${securityVulns.length}`);
-    }
     if (deprecatedPkgs.length > 0) {
       console.log(`📦 Deprecated packages: ${deprecatedPkgs.length}`);
     }
 
     const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length;
-    if (criticalIssues > 0 || detectedBreakingChanges.length > 0 || securityVulns.length > 0) {
+    if (criticalIssues > 0 || detectedBreakingChanges.length > 0) {
       console.log(chalk.red.bold('\n⚠️  Action Required:'));
       if (errors > 0) {
         console.log(`  • ${errors} compatibility error(s) need fixing`);
@@ -249,12 +220,9 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       if (detectedBreakingChanges.length > 0) {
         console.log(`  • ${detectedBreakingChanges.length} breaking change(s) require code updates`);
       }
-      if (securityVulns.length > 0) {
-        console.log(`  • ${securityVulns.length} security vulnerability(ies) need patching`);
-      }
-    } else if (versionMismatches.length === 0 && duplicates.length === 0) {
+    } else if (errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0) {
       console.log(chalk.green.bold('\n✨ All dependencies look good!'));
-    } else {
+    } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0) {
       console.log(chalk.yellow.bold('\n⚠️  Consider addressing detected issues'));
     }
 
@@ -274,10 +242,17 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           warnings,
           errors,
           healthScore: healthBreakdown.total > 0
-            ? Math.round(((healthBreakdown.compatible + healthBreakdown.notChecked) / healthBreakdown.total) * 100)
+            ? (() => {
+              const analyzed = healthBreakdown.total - healthBreakdown.notChecked;
+              if (analyzed > 0) {
+                const good = healthBreakdown.compatible;
+                const bad = healthBreakdown.warnings + healthBreakdown.errors;
+                return Math.round((good / (good + bad)) * 100);
+              }
+              return healthBreakdown.total > 0 ? 0 : 100;
+            })()
             : 100,
           breakingChanges: detectedBreakingChanges.length,
-          securityVulnerabilities: securityVulns.length,
           versionMismatches: versionMismatches.length,
           duplicateDependencies: duplicates.length,
           peerConflicts: peerConflicts.length,
@@ -293,7 +268,6 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           replacement: p.info.replacement,
         })),
         breakingChanges: detectedBreakingChanges.filter(r => r.issue).map(r => r.issue),
-        securityVulnerabilities: securityVulns,
       };
       console.log('\n' + JSON.stringify(result, null, 2));
     }
