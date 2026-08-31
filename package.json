@@ -1,6 +1,6 @@
 {
   "name": "rn-dep-scanner",
-  "version": "1.2.0",
+  "version": "1.2.3",
   "description": "React Native dependency scanner - compatibility, breaking changes & security vulnerabilities",
   "type": "module",
   "main": "dist/index.js",
