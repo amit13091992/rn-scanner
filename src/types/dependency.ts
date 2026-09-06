@@ -27,39 +27,6 @@ export interface CompatibilityRule {
   node?: string;
 }
 
-export interface Reference {
-  type: string;
-  url: string;
-  title?: string;
-}
-
-export interface SecurityVulnerabilityData {
-  id: string;
-  aliases: string[];
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'unknown';
-  description: string;
-  affectedVersions: string[];
-  fixedVersion?: string;
-  fixedVersions?: string[];
-  published?: string;
-  modified?: string;
-  withdrawn?: string;
-  cvss?: {
-    score: number;
-    vector: string;
-  };
-  references: Reference[];
-  cwe?: string[];
-  source: 'osv' | 'local' | 'cached';
-}
-
-export interface DetectionResult {
-  vulnerabilities: SecurityVulnerabilityData[];
-  source: 'osv' | 'local' | 'cached';
-  refreshedAt: number;
-  confidence: 'high' | 'medium' | 'low';
-}
-
 export interface BreakingChange {
   package: string;
   introducedInVersion: string;

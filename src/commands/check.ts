@@ -4,7 +4,6 @@ import { detectPackageManager } from '../utils/lockfile.js';
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
 import { analyzeAllDependencies } from '../analyzers/compatibility.js';
 import { analyzeBreakingChanges } from '../analyzers/breakingChanges.js';
-import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
 import {
   printHeader,

@@ -43,9 +43,12 @@ function compareVersions(current: string, latest: string): 'major' | 'minor' | '
 
 export async function outdatedCommand(options: OutdatedOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
+  const jsonMode = !!options.json;
 
   try {
-    printHeader('RN Deps Scanner - Outdated Check');
+    if (!jsonMode) {
+      printHeader('RN Deps Scanner - Outdated Check');
+    }
 
     const packageJson = readPackageJson(cwd);
     const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
@@ -68,15 +71,29 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
       }
     });
 
+    const major = outdated.filter(p => p.type === 'major');
+    const minor = outdated.filter(p => p.type === 'minor');
+    const patch = outdated.filter(p => p.type === 'patch');
+
+    if (jsonMode) {
+      const result = {
+        summary: {
+          total: outdated.length,
+          major: major.length,
+          minor: minor.length,
+          patch: patch.length,
+        },
+        packages: outdated,
+      };
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
     if (outdated.length === 0) {
       printSection('Status');
       printSuccess('All dependencies are up to date');
       return;
     }
-
-    const major = outdated.filter(p => p.type === 'major');
-    const minor = outdated.filter(p => p.type === 'minor');
-    const patch = outdated.filter(p => p.type === 'patch');
 
     printSection('Available Updates');
 
@@ -100,23 +117,13 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
         console.log(`  ${pkg.name}: ${pkg.current} → ${pkg.latest}`);
       });
     }
-
-    if (options.json) {
-      const result = {
-        summary: {
-          total: outdated.length,
-          major: major.length,
-          minor: minor.length,
-          patch: patch.length,
-        },
-        packages: outdated,
-      };
-      console.log('\n' + JSON.stringify(result, null, 2));
-    }
   } catch (error) {
-    printError(
-      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    if (jsonMode) {
+      console.log(JSON.stringify({ error: `Error: ${message}` }, null, 2));
+    } else {
+      printError(`Error: ${message}`);
+    }
     process.exit(1);
   }
 }
