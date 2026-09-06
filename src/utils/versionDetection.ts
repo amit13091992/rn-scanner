@@ -133,17 +133,20 @@ export function isReactNativeCompatible(
   const rnMajor = parseInt(reactNativeVersion.split('.')[0], 10);
   const reactMajor = parseInt(reactVersion.split('.')[0], 10);
 
-  if (rnMajor === 0 && reactMajor >= 18) {
+  const rnMinor = parseInt(reactNativeVersion.split('.')[1] ?? '0', 10);
+  const requiresReact18Plus = rnMajor > 0 || rnMinor >= 69;
+
+  if (requiresReact18Plus && reactMajor < 18) {
     return {
       compatible: false,
-      issue: 'React Native 0.x requires React 16.x or 17.x, but React 18+ is installed',
+      issue: 'React Native 0.69+ requires React 18+, but older React is installed',
     };
   }
 
-  if (rnMajor >= 1 && reactMajor < 18) {
+  if (!requiresReact18Plus && reactMajor >= 18) {
     return {
       compatible: false,
-      issue: 'React Native 1.x+ requires React 18+, but older React is installed',
+      issue: 'React Native versions before 0.69 require React 16.x or 17.x, but React 18+ is installed',
     };
   }
 

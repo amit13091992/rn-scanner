@@ -61,6 +61,8 @@ export class OSVClient {
       dep => !this.cache.has(dep.name) || !this.isCacheValid(this.cache.get(dep.name)!.timestamp)
     );
 
+    let osvUnavailable = false;
+
     if (uncached.length > 0) {
       try {
         const fetched = await this.fetchFromOSV(uncached);
@@ -73,17 +75,16 @@ export class OSVClient {
         this.saveCache();
       } catch (error) {
         console.warn(`OSV fetch failed, using fallback: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        osvUnavailable = true;
       }
     }
 
     dependencies.forEach(dep => {
+      const version = dep.resolvedVersion || dep.requestedVersion;
       const cached = this.cache.get(dep.name);
       const osvVulns = cached?.data || [];
 
-      const matched = this.matchVulnerabilities(
-        dep.resolvedVersion || dep.requestedVersion,
-        osvVulns
-      );
+      const matched = this.matchVulnerabilities(version, osvVulns);
 
       if (matched.length > 0) {
         results.set(dep.name, {
@@ -92,6 +93,19 @@ export class OSVClient {
           refreshedAt: cached?.timestamp || Date.now(),
           confidence: 'high',
         });
+        return;
+      }
+
+      if (osvUnavailable && !cached) {
+        const fallbackVulns = this.getFallbackVulnerabilities(dep.name, version);
+        if (fallbackVulns.length > 0) {
+          results.set(dep.name, {
+            vulnerabilities: fallbackVulns,
+            source: 'local',
+            refreshedAt: Date.now(),
+            confidence: 'low',
+          });
+        }
       }
     });
 
@@ -172,7 +186,7 @@ export class OSVClient {
       if (!affected) return;
 
       const inRange = affected.ranges?.some(range =>
-        range.events?.some(event => {
+        range.events?.every(event => {
           if (event.fixed && !versionInRange(version, `<${event.fixed}`)) {
             return false;
           }

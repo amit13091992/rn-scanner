@@ -79,22 +79,22 @@ test('detectDuplicateDependencies - marks react as critical', () => {
   assert.equal(duplicates[0].severity, 'critical');
 });
 
-test('isReactNativeCompatible - detects RN 0.x with React 18+', () => {
-  const result = isReactNativeCompatible('0.73.0', '18.2.0');
+test('isReactNativeCompatible - detects RN pre-0.69 with React 18+', () => {
+  const result = isReactNativeCompatible('0.68.0', '18.2.0');
   assert.equal(result.compatible, false);
   assert(result.issue?.includes('React 16.x or 17.x'));
 });
 
-test('isReactNativeCompatible - detects RN 1.x with old React', () => {
-  const result = isReactNativeCompatible('1.0.0', '17.0.2');
+test('isReactNativeCompatible - detects RN 0.69+ with old React', () => {
+  const result = isReactNativeCompatible('0.73.0', '17.0.2');
   assert.equal(result.compatible, false);
   assert(result.issue?.includes('React 18+'));
 });
 
 test('isReactNativeCompatible - allows compatible combinations', () => {
-  const result1 = isReactNativeCompatible('0.73.0', '17.0.2');
+  const result1 = isReactNativeCompatible('0.68.0', '17.0.2');
   assert.equal(result1.compatible, true);
 
-  const result2 = isReactNativeCompatible('1.0.0', '18.2.0');
+  const result2 = isReactNativeCompatible('0.83.0', '19.2.0');
   assert.equal(result2.compatible, true);
 });

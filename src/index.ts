@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'module';
 import { Command } from 'commander';
 import { checkCommand } from './commands/check.js';
 import { outdatedCommand } from './commands/outdated.js';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
 
 const program = new Command();
 
 program
   .name('rn-dep-scanner')
   .description('React Native dependency scanner - compatibility, breaking changes & security vulnerabilities')
-  .version('1.1.0');
+  .version(version);
 
 program
   .command('check', { isDefault: true })
