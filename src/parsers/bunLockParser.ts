@@ -2,60 +2,44 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { ParsedLockfile, ResolvedDependency } from '../types/lockfile.js';
 
+function stripTrailingCommas(json: string): string {
+  return json.replace(/,(\s*[}\]])/g, '$1');
+}
+
 export function parseBunLock(cwd: string): ParsedLockfile {
+  const dependencies = new Map<string, ResolvedDependency>();
+
   try {
-    const bunLockPath = resolve(cwd, 'bun.lockb');
+    const bunLockPath = resolve(cwd, 'bun.lock');
+    const raw = readFileSync(bunLockPath, 'utf-8');
+    const content = JSON.parse(stripTrailingCommas(raw));
 
-    readFileSync(bunLockPath);
+    if (content.packages && typeof content.packages === 'object') {
+      for (const value of Object.values<unknown>(content.packages)) {
+        const spec = Array.isArray(value) ? value[0] : undefined;
+        if (typeof spec !== 'string') continue;
 
-    const dependencies = new Map<string, ResolvedDependency>();
+        const atIndex = spec.lastIndexOf('@');
+        if (atIndex <= 0) continue;
 
-    try {
-      const bunJsonPath = resolve(cwd, 'bun.lock.json');
-      const bunLockJson = JSON.parse(readFileSync(bunJsonPath, 'utf-8'));
-
-      if (bunLockJson.dependencies) {
-        Object.entries(bunLockJson.dependencies).forEach(([name, info]: [string, any]) => {
-          if (typeof info === 'object' && info.version) {
-            dependencies.set(name, {
-              name,
-              requestedVersion: info.version,
-              resolvedVersion: info.version,
-            });
-          }
-        });
+        const name = spec.slice(0, atIndex);
+        const version = spec.slice(atIndex + 1);
+        if (name && version) {
+          dependencies.set(name, {
+            name,
+            requestedVersion: version,
+            resolvedVersion: version,
+          });
+        }
       }
-
-      if (bunLockJson.packages) {
-        Object.entries(bunLockJson.packages).forEach(([key, info]: [string, any]) => {
-          if (typeof info === 'object' && info.version) {
-            const name = key.split('@')[0] === '' ? '@' + key.split('@')[1] : key.split('@')[0];
-            dependencies.set(name, {
-              name,
-              requestedVersion: info.version,
-              resolvedVersion: info.version,
-            });
-          }
-        });
-      }
-    } catch {
-      return {
-        manager: 'bun',
-        dependencies: new Map(),
-        timestamp: Date.now(),
-      };
     }
-
-    return {
-      manager: 'bun',
-      dependencies,
-      timestamp: Date.now(),
-    };
   } catch {
-    return {
-      manager: 'bun',
-      dependencies: new Map(),
-      timestamp: Date.now(),
-    };
+    // Missing or unparsable bun.lock (e.g. legacy binary bun.lockb) — return empty result.
   }
+
+  return {
+    manager: 'bun',
+    dependencies,
+    timestamp: Date.now(),
+  };
 }

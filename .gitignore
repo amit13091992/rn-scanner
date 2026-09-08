@@ -76,3 +76,6 @@ android/*.iml
 # Claude development files (for prompt caching, not for git)
 CLAUDE.md
 CLAUDE.local.md
+.claude/
+.claude*
+.claude/skills/*

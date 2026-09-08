@@ -4,6 +4,9 @@ import { createRequire } from 'module';
 import { Command } from 'commander';
 import { checkCommand } from './commands/check.js';
 import { outdatedCommand } from './commands/outdated.js';
+import { doctorCommand } from './commands/doctor.js';
+import { whyCommand } from './commands/why.js';
+import { treeCommand } from './commands/tree.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -39,6 +42,44 @@ program
     await outdatedCommand({
       json: options.json || false,
       majorOnly: options.majorOnly || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('doctor')
+  .description('Check React Native environment health (Hermes, native toolchain)')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await doctorCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('why <package>')
+  .description('Explain why a package is installed')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (packageName, options) => {
+    await whyCommand(packageName, {
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('tree [package]')
+  .description('Print the dependency tree, optionally rooted at a package')
+  .option('--json', 'Output as JSON')
+  .option('--duplicates', 'Only show branches containing duplicate package versions')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (packageName, options) => {
+    await treeCommand(packageName, {
+      json: options.json || false,
+      duplicatesOnly: options.duplicates || false,
       cwd: options.cwd || process.cwd(),
     });
   });
