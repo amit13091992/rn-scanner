@@ -1,6 +1,6 @@
 # rn-dep-scanner
 
-A comprehensive React Native dependency scanner that detects compatibility issues, breaking changes, and New Architecture (Fabric/TurboModules) support gaps in your project. (Security vulnerability scanning is implemented but currently disabled — see [Security Scanning](#security-scanning-disabled).)
+A comprehensive React Native project health scanner that detects dependency compatibility issues, breaking changes, New Architecture (Fabric/TurboModules) support gaps, and Hermes engine status — with `why`/`tree` commands for tracing dependency conflicts. (Security vulnerability scanning is implemented but currently disabled — see [Security Scanning](#security-scanning-disabled).)
 
 ## Features
 
@@ -26,6 +26,20 @@ A comprehensive React Native dependency scanner that detects compatibility issue
 - **JSON Output** — Machine-readable output for CI/CD integration
 - **Outdated Command** — Lists available updates categorized by severity
 - **Strict Mode** — Exit codes for automated quality gates
+
+### Environment & Dependency Graph (new)
+- **`doctor` Command** — Reports React Native/React version and Hermes engine status; the first step toward a full native-environment health check
+- **Hermes Detection** — Detects Hermes enabled/disabled from Android `gradle.properties`, legacy `build.gradle`, iOS `Podfile`, or Expo config, with a sensible RN-version-based default when nothing is explicit
+- **`why <package>`** — Shows every path through which a package ends up installed, including all versions it resolves to
+- **`tree` Command** — Prints the full dependency tree (or a subtree rooted at one package); `--duplicates` filters to only branches containing conflicting versions
+- **Real Transitive Resolution (npm)** — Builds an actual dependency hierarchy from `package-lock.json` (v2/v3) instead of a flat list; yarn/pnpm/bun currently report direct dependencies only (see [Known Limitations](#known-limitations))
+
+## What's New in v1.3 (Phase 3, in progress)
+
+✅ **`doctor` Command** — New command reporting RN/React version and Hermes status (Android/iOS native toolchain checks planned next)
+✅ **Hermes Detection** — `src/detectors/hermes.ts` + `src/analyzers/hermes.ts`, checked across Android, iOS, and Expo config with an RN-version-aware default
+✅ **Dependency Graph & `why`/`tree` Commands** — Real transitive dependency graph for npm projects (from `package-lock.json`'s `packages` hierarchy), powering `why <package>` and `tree [package] [--duplicates]`
+✅ **Fixed Bun Lockfile Detection** — `bunLockParser.ts` was reading the wrong filenames (`bun.lockb`/`bun.lock.json`) while `lockfile.ts` detected `bun.lock`; Bun projects previously resolved zero dependency versions. Now parses the real `bun.lock` format correctly, including scoped packages
 
 ## What's New in v1.2.4 (Phase 3, in progress)
 
@@ -58,7 +72,7 @@ A comprehensive React Native dependency scanner that detects compatibility issue
 ✅ **Peer Dependency Conflicts** — Detects incompatible peer dependency requirements  
 ✅ **React ↔ React Native Compatibility** — Validates major version compatibility  
 ✅ **Deprecated Package Detection** — Warns about deprecated packages with replacements  
-✅ **Comprehensive Tests** — 24 unit + integration tests (100% passing)
+✅ **Comprehensive Tests** — 41 unit + integration tests (100% passing)
 
 ## What's New in v1.1
 ✅ **Proper Version Comparison** — Fixed semantic versioning bugs (was using string comparison)  
@@ -313,6 +327,82 @@ rn-dep-scanner outdated --major-only  # Only show major version updates
 rn-dep-scanner outdated --json        # Machine-readable output
 ```
 
+### Doctor Command
+
+Check the React Native environment (currently: RN/React version + Hermes; native Android/iOS toolchain checks are planned):
+
+```bash
+rn-dep-scanner doctor
+```
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   React Native Environment
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+React Native
+────────────
+✓ React Native: 0.74.0
+✓ React: 18.2.0
+
+Hermes
+──────
+✓ Hermes: enabled (detected from android-gradle-properties)
+```
+
+```bash
+rn-dep-scanner doctor --json
+rn-dep-scanner doctor --cwd /path/to/project
+```
+
+### Why Command
+
+Show every path through which a package is installed, and every version it resolves to:
+
+```bash
+rn-dep-scanner why <package>
+```
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Why is "shared" installed?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+shared@2.0.0
+────────────
+  └─ your-app → foo → shared
+
+shared@1.0.0
+────────────
+  └─ your-app → baz → shared
+```
+
+```bash
+rn-dep-scanner why <package> --json
+```
+
+### Tree Command
+
+Print the dependency tree, or a subtree rooted at one package:
+
+```bash
+rn-dep-scanner tree
+rn-dep-scanner tree react-native-reanimated
+rn-dep-scanner tree --duplicates   # only branches with conflicting versions
+```
+
+```
+your-app
+├─ react@18.2.0
+├─ react-native@0.74.0
+├─ foo@1.0.0
+│  └─ shared@2.0.0
+└─ baz@1.0.0
+   └─ shared@1.0.0
+```
+
+For yarn, pnpm, and bun projects, `why` and `tree` currently show only direct dependencies (a warning is printed) since those parsers don't yet expose a full resolved hierarchy — see [Known Limitations](#known-limitations).
+
 ## Scanned Packages
 
 The tool includes breaking change detection and compatibility analysis for:
@@ -372,9 +462,17 @@ All critical packages are scanned for version compatibility, breaking changes, a
 
 An OSV.dev-based vulnerability scanner shipped in v1.1 (batch queries against the OSV.dev API, a 24-hour TTL local cache, and an offline fallback database), but it was disconnected from the `check` command in v1.2 pending reliability fixes and never re-enabled. Since it had become fully dead code with no callers or test coverage, it was removed from the codebase rather than left to rot. `check` output (human or `--json`) has no security/CVE data today. Reinstating this is on the Phase 3 roadmap as new implementation work.
 
+## Known Limitations
+
+- **Security vulnerability scanning** was removed as dead code (see above) — reinstating it is new implementation work, not resurrection.
+- **Transitive dependency resolution** is only real for npm (`package-lock.json` v2/v3, parsed via its `packages` hierarchy). Yarn, pnpm, and bun lockfiles currently produce a flat dependency list, so `why`/`tree` for those managers only show direct dependencies from the project root — `tree` prints a warning when this applies.
+- **`doctor`** currently reports RN/React version and Hermes only. Android (Kotlin/AGP/Gradle/SDK/NDK) and iOS (Xcode/CocoaPods/Ruby/Swift) native toolchain checks are planned next.
+- **Bun lockfile parsing** now reads the correct `bun.lock` format (fixed from previously reading nonexistent filenames), but is still less battle-tested against real-world Bun projects than the npm/yarn/pnpm parsers.
+- No monorepo (pnpm-workspace/yarn workspaces) support yet.
+
 ## Roadmap
 
-See `CLAUDE.md`'s "Next Steps" section for the up-to-date Phase 3/4 plan, including reinstating security scanning, Hermes detection, and monorepo support.
+Planned next: Android/iOS native environment detection (Kotlin, AGP, Gradle, Xcode, CocoaPods), reinstating security vulnerability scanning, and monorepo support.
 
 ## Resolved vs Requested Versions
 
