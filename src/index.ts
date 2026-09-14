@@ -8,6 +8,7 @@ import { doctorCommand } from './commands/doctor.js';
 import { whyCommand } from './commands/why.js';
 import { treeCommand } from './commands/tree.js';
 import { compareRnCommand } from './commands/compareRn.js';
+import { upgradeCommand } from './commands/upgrade.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -92,6 +93,19 @@ program
   .action(async (from, to, options) => {
     await compareRnCommand(from, to, {
       json: options.json || false,
+    });
+  });
+
+program
+  .command('upgrade')
+  .description('Assess upgrade readiness to a target React Native version')
+  .requiredOption('--to <version>', 'Target React Native version')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await upgradeCommand(options.to, {
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
     });
   });
 
