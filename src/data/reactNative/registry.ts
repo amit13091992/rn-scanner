@@ -292,13 +292,15 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
     ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
   },
   {
-    // RN 0.87 raised minCompileSdk to 34 and compileSdk/buildTools to 37.
+    // RN 0.87 raised minCompileSdk to 34, compileSdk/buildTools to 37, and per public release
+    // notes also raised the AGP floor to 9.0 and Node to 22+ (satisfied by the 22.13.0 baseline
+    // below, which is the more specific of the two figures found in release notes).
     version: '0.87',
     node: '22.13.0',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
-      agp: '8.10.0',
+      agp: '9.0.0',
       gradle: '8.13',
       compileSdk: '37',
       targetSdk: '35',
