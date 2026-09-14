@@ -7,6 +7,7 @@ import { outdatedCommand } from './commands/outdated.js';
 import { doctorCommand } from './commands/doctor.js';
 import { whyCommand } from './commands/why.js';
 import { treeCommand } from './commands/tree.js';
+import { compareRnCommand } from './commands/compareRn.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -81,6 +82,16 @@ program
       json: options.json || false,
       duplicatesOnly: options.duplicates || false,
       cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('compare-rn <from> <to>')
+  .description('Compare native toolchain requirements between two React Native versions')
+  .option('--json', 'Output as JSON')
+  .action(async (from, to, options) => {
+    await compareRnCommand(from, to, {
+      json: options.json || false,
     });
   });
 
