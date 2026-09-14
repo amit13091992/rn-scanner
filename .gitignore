@@ -72,3 +72,8 @@ android/.gradle/
 android/local.properties
 android/.idea/
 android/*.iml
+
+# Claude Code local config/skills (kept locally, never committed or published)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
