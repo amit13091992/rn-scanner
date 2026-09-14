@@ -3,7 +3,9 @@ import { detectHermes } from '../detectors/hermes.js';
 import { analyzeHermes } from '../analyzers/hermes.js';
 import { analyzeAndroidEnvironment } from '../analyzers/androidEnvironment.js';
 import { analyzeIosEnvironment } from '../analyzers/iosEnvironment.js';
+import { analyzeNodeEnvironment } from '../analyzers/nodeEnvironment.js';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
+import { verdictFromRequirements, combineVerdicts } from '../utils/verdict.js';
 import {
   printHeader,
   printSection,
@@ -49,6 +51,12 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     const rnVersionForEnv = rnInfo.version || '';
     const androidEnvironment = analyzeAndroidEnvironment(cwd, rnVersionForEnv);
     const iosEnvironment = analyzeIosEnvironment(cwd, rnVersionForEnv);
+    const nodeEnvironment = analyzeNodeEnvironment(rnVersionForEnv);
+    const verdict = combineVerdicts([
+      verdictFromRequirements(nodeEnvironment),
+      verdictFromRequirements(androidEnvironment),
+      verdictFromRequirements(iosEnvironment),
+    ]);
 
     if (jsonMode) {
       const result = {
@@ -61,6 +69,8 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
           detectedFrom: hermes.detectedFrom,
           messages: hermes.messages,
         },
+        verdict,
+        nodeEnvironment,
         androidEnvironment,
         iosEnvironment,
       };
@@ -69,6 +79,9 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     }
 
     printHeader('React Native Environment');
+
+    const verdictLabel = verdict === 'BLOCKED' ? '🔴 BLOCKED' : verdict === 'WARN' ? '🟠 WARN' : '✓ READY';
+    console.log(`Verdict: ${verdictLabel}\n`);
 
     printSection('React Native');
     if (rnInfo.version) {
@@ -91,6 +104,9 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
       printInfo('Hermes: could not be determined');
     }
     hermes.messages.forEach((msg) => printWarning(msg));
+
+    printSection('Node.js Environment');
+    printEnvironmentRequirements(nodeEnvironment);
 
     printSection('Android Environment');
     printEnvironmentRequirements(androidEnvironment);

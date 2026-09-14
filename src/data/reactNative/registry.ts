@@ -2,14 +2,24 @@ import type { ReactNativeNativeRequirements } from '../../types/reactNativeRequi
 
 /**
  * Native toolchain baselines for each supported React Native minor version, derived from
- * React Native's upgrade-helper/template history. 0.80-0.83 had not shipped final templates
- * at authoring time; those values are best-effort estimates extrapolated from prior trends.
+ * React Native's upgrade-helper/template history. 0.85-0.87 had not shipped final templates
+ * at authoring time; those values are best-effort estimates extrapolated from prior trends
+ * and public release notes (0.87: minCompileSdk 34, compileSdk/buildTools 37).
  *
- * Adding support for a new RN version is: append one entry to this array.
+ * MAINTENANCE: this table goes stale every time RN cuts a new release. See
+ * `src/data/reactNative/MAINTENANCE.md` for the update process, where each version's numbers
+ * were sourced from, and which entries are estimates vs. confirmed from a shipped template.
+ * `test/reactNativeRegistry.test.ts` enforces structural discipline (contiguous minors, every
+ * field present, node baseline non-decreasing) but cannot catch a stale *value* — that still
+ * needs a human to check against the current upgrade-helper output when a new RN version ships.
+ *
+ * Adding support for a new RN version is: append one entry to this array, then update
+ * MAINTENANCE.md's source table.
  */
 export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[] = [
   {
     version: '0.70',
+    node: '14.17.0',
     android: {
       jdk: '11',
       kotlin: '1.6.10',
@@ -25,6 +35,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.71',
+    node: '16.0.0',
     android: {
       jdk: '11',
       kotlin: '1.7.0',
@@ -40,6 +51,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.72',
+    node: '16.0.0',
     android: {
       jdk: '11',
       kotlin: '1.8.0',
@@ -55,6 +67,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.73',
+    node: '18.0.0',
     android: {
       jdk: '17',
       kotlin: '1.8.0',
@@ -70,6 +83,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.74',
+    node: '18.18.0',
     android: {
       jdk: '17',
       kotlin: '1.9.22',
@@ -85,6 +99,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.75',
+    node: '18.18.0',
     android: {
       jdk: '17',
       kotlin: '1.9.24',
@@ -100,6 +115,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.76',
+    node: '18.18.0',
     android: {
       jdk: '17',
       kotlin: '1.9.24',
@@ -115,6 +131,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.77',
+    node: '18.18.0',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -130,6 +147,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.78',
+    node: '18.18.0',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -145,6 +163,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.79',
+    node: '18.18.0',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -162,6 +181,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
     // NOTE: 0.80-0.83 had not shipped final templates at authoring time; values are
     // best-effort estimates extrapolated from the trend of prior versions.
     version: '0.80',
+    node: '20.19.4',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -177,6 +197,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.81',
+    node: '20.19.4',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -192,6 +213,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.82',
+    node: '20.19.4',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -207,6 +229,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.83',
+    node: '20.19.4',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -222,6 +245,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
   },
   {
     version: '0.84',
+    node: '22.13.0',
     android: {
       jdk: '17',
       kotlin: '2.0.21',
@@ -232,6 +256,55 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
       minSdk: '24',
       ndk: '27.1.12297006',
       buildToolsVersion: '36.0.0',
+    },
+    ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
+  },
+  {
+    version: '0.85',
+    node: '22.13.0',
+    android: {
+      jdk: '17',
+      kotlin: '2.0.21',
+      agp: '8.10.0',
+      gradle: '8.13',
+      compileSdk: '36',
+      targetSdk: '35',
+      minSdk: '24',
+      ndk: '27.1.12297006',
+      buildToolsVersion: '36.0.0',
+    },
+    ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
+  },
+  {
+    version: '0.86',
+    node: '22.13.0',
+    android: {
+      jdk: '17',
+      kotlin: '2.0.21',
+      agp: '8.10.0',
+      gradle: '8.13',
+      compileSdk: '37',
+      targetSdk: '35',
+      minSdk: '24',
+      ndk: '27.1.12297006',
+      buildToolsVersion: '37.0.0',
+    },
+    ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
+  },
+  {
+    // RN 0.87 raised minCompileSdk to 34 and compileSdk/buildTools to 37.
+    version: '0.87',
+    node: '22.13.0',
+    android: {
+      jdk: '17',
+      kotlin: '2.0.21',
+      agp: '8.10.0',
+      gradle: '8.13',
+      compileSdk: '37',
+      targetSdk: '35',
+      minSdk: '24',
+      ndk: '27.1.12297006',
+      buildToolsVersion: '37.0.0',
     },
     ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
   },

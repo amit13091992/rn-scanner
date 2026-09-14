@@ -44,8 +44,17 @@ test('compareRnCommand - json output includes android and ios diffs between vers
 test('compareRnCommand - identical versions produce no changed fields', async () => {
   const { output } = await captureStdout(() => compareRnCommand('0.75', '0.75', { json: true }));
   const parsed = JSON.parse(output);
-  const allDiffs = [...parsed.android, ...parsed.ios];
+  const allDiffs = [parsed.node, ...parsed.android, ...parsed.ios];
   assert.ok(allDiffs.every((d: { changed: boolean }) => d.changed === false));
+});
+
+test('compareRnCommand - json output includes a node diff between versions', async () => {
+  const { output } = await captureStdout(() => compareRnCommand('0.79', '0.84', { json: true }));
+  const parsed = JSON.parse(output);
+  assert.equal(parsed.node.name, 'Node.js');
+  assert.equal(parsed.node.from, '18.18.0');
+  assert.equal(parsed.node.to, '22.13.0');
+  assert.equal(parsed.node.changed, true);
 });
 
 test('compareRnCommand - unparseable version exits with an error', async () => {

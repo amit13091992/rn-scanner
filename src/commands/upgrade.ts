@@ -4,10 +4,12 @@ import { analyzeBreakingChanges } from '../analyzers/breakingChanges.js';
 import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
 import { analyzeAndroidEnvironment } from '../analyzers/androidEnvironment.js';
 import { analyzeIosEnvironment } from '../analyzers/iosEnvironment.js';
+import { analyzeNodeEnvironment } from '../analyzers/nodeEnvironment.js';
 import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
 import { detectDuplicateDependencies } from '../utils/versionDetection.js';
 import type { DependencyInfo } from '../types/dependency.js';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
+import { verdictFromRequirements, combineVerdicts } from '../utils/verdict.js';
 import {
   printHeader,
   printSection,
@@ -57,8 +59,10 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
 
     const androidEnvironment = analyzeAndroidEnvironment(cwd, toVersion);
     const iosEnvironment = analyzeIosEnvironment(cwd, toVersion);
+    const nodeEnvironment = analyzeNodeEnvironment(toVersion);
     const androidIssues = envIssues(androidEnvironment);
     const iosIssues = envIssues(iosEnvironment);
+    const nodeIssues = envIssues(nodeEnvironment);
 
     const deprecatedPkgs = checkDeprecatedPackages(dependencies.map((d) => d.name));
     const duplicates = detectDuplicateDependencies(dependencies);
@@ -67,30 +71,47 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
     const newArchUnsupported = newArchIssues.filter((i) => i.support === 'unsupported').length;
     const androidErrors = androidIssues.filter((i) => i.status === 'error').length;
     const iosErrors = iosIssues.filter((i) => i.status === 'error').length;
+    const nodeErrors = nodeIssues.filter((i) => i.status === 'error').length;
 
     let risk: RiskLevel = 'low';
-    if (criticalBreaking > 0 || newArchUnsupported > 0 || androidErrors > 0 || iosErrors > 0) {
+    if (criticalBreaking > 0 || newArchUnsupported > 0 || androidErrors > 0 || iosErrors > 0 || nodeErrors > 0) {
       risk = 'high';
     } else if (
       breakingChanges.length > 0 ||
       newArchIssues.length > 0 ||
       androidIssues.length > 0 ||
-      iosIssues.length > 0
+      iosIssues.length > 0 ||
+      nodeIssues.length > 0
     ) {
       risk = 'medium';
     }
+
+    // verdict is a READY/WARN/BLOCKED restatement of `risk`, kept as a distinct field so
+    // consumers can match on the literal contract without depending on the risk vocabulary.
+    const verdict = risk === 'high' ? 'BLOCKED' : risk === 'medium' ? 'WARN' : 'READY';
+    // envVerdict rolls up just the native-toolchain checks (node/android/ios), independent of
+    // breaking-change/New Architecture severity — useful when a caller only cares whether the
+    // machine itself is ready to build, not whether the JS dependency graph has migration work.
+    const envVerdict = combineVerdicts([
+      verdictFromRequirements(nodeEnvironment),
+      verdictFromRequirements(androidEnvironment),
+      verdictFromRequirements(iosEnvironment),
+    ]);
 
     if (jsonMode) {
       const result = {
         from: currentVersion,
         to: toVersion,
         risk,
+        verdict,
+        envVerdict,
         breakingChanges: breakingChanges.map((c) => c.issue),
         newArchitecture: {
           isDefaultAtTarget: newArch.status.isNewArchDefault,
           isBridgeRemovedAtTarget: newArch.status.isBridgeRemoved,
           issues: newArchIssues,
         },
+        nodeEnvironment,
         androidEnvironment,
         iosEnvironment,
         deprecatedPackages: deprecatedPkgs.map((p) => ({
@@ -107,7 +128,8 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
     printHeader(`Upgrade Readiness: ${currentVersion ?? 'unknown'} → ${toVersion}`);
 
     const riskLabel = risk === 'high' ? '🔴 HIGH' : risk === 'medium' ? '🟠 MEDIUM' : '✓ LOW';
-    console.log(`Risk: ${riskLabel}\n`);
+    const verdictLabel = verdict === 'BLOCKED' ? '🔴 BLOCKED' : verdict === 'WARN' ? '🟠 WARN' : '✓ READY';
+    console.log(`Verdict: ${verdictLabel}  (Risk: ${riskLabel})\n`);
 
     printSection('Breaking Changes');
     if (breakingChanges.length === 0) {
@@ -142,6 +164,18 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
       }
     } else {
       printInfo(`React Native ${toVersion} does not default to the New Architecture`);
+    }
+
+    printSection('Node.js Environment');
+    if (nodeIssues.length === 0) {
+      printSuccess('Current Node.js version satisfies target requirements (where detectable)');
+    } else {
+      nodeIssues.forEach((i) => {
+        const label = `${i.name}: ${i.current ?? 'not detected'} (required: ${i.required ?? i.recommended})`;
+        if (i.status === 'error') printError(label);
+        else printWarning(label);
+        if (i.reason) console.log(`  ${i.reason}`);
+      });
     }
 
     printSection('Android Environment');
