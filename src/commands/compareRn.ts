@@ -86,6 +86,12 @@ export async function compareRnCommand(
 
   const androidDiffs = diffFields(fromReq.android, toReq.android, ANDROID_LABELS);
   const iosDiffs = diffFields(fromReq.ios, toReq.ios, IOS_LABELS);
+  const nodeDiff: FieldDiff = {
+    name: 'Node.js',
+    from: fromReq.node,
+    to: toReq.node,
+    changed: fromReq.node !== toReq.node,
+  };
 
   if (jsonMode) {
     console.log(
@@ -93,6 +99,7 @@ export async function compareRnCommand(
         {
           from: fromReq.version,
           to: toReq.version,
+          node: nodeDiff,
           android: androidDiffs,
           ios: iosDiffs,
         },
@@ -105,13 +112,16 @@ export async function compareRnCommand(
 
   printHeader(`React Native ${fromReq.version} → ${toReq.version}`);
 
+  printSection('Node.js');
+  printDiffTable([nodeDiff]);
+
   printSection('Android');
   printDiffTable(androidDiffs);
 
   printSection('iOS');
   printDiffTable(iosDiffs);
 
-  const anyChanged = [...androidDiffs, ...iosDiffs].some((d) => d.changed);
+  const anyChanged = [nodeDiff, ...androidDiffs, ...iosDiffs].some((d) => d.changed);
   if (!anyChanged) {
     printInfo('\nNo native toolchain baseline changes between these versions.');
   }

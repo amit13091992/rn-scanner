@@ -74,7 +74,10 @@ test('upgradeCommand - json output includes risk and all sections for an RN 0.72
     const parsed = JSON.parse(output);
     assert.equal(parsed.to, '0.75');
     assert.ok(['low', 'medium', 'high'].includes(parsed.risk));
+    assert.ok(['READY', 'WARN', 'BLOCKED'].includes(parsed.verdict));
+    assert.ok(['READY', 'WARN', 'BLOCKED'].includes(parsed.envVerdict));
     assert.ok(Array.isArray(parsed.breakingChanges));
+    assert.ok(Array.isArray(parsed.nodeEnvironment));
     assert.ok(Array.isArray(parsed.androidEnvironment));
     assert.ok(Array.isArray(parsed.iosEnvironment));
     assert.ok('newArchitecture' in parsed);
@@ -104,6 +107,7 @@ test('upgradeCommand - human output prints a header and risk line', async () => 
     writeProject(dir, '0.72.0');
     const { output } = await captureStdout(() => upgradeCommand('0.75', { cwd: dir }));
     assert.match(output, /Upgrade Readiness/);
+    assert.match(output, /Verdict:/);
     assert.match(output, /Risk:/);
     assert.match(output, /Breaking Changes/);
     assert.match(output, /New Architecture/);

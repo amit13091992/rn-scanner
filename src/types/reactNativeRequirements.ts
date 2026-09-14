@@ -21,6 +21,8 @@ export interface IosNativeRequirements {
 export interface ReactNativeNativeRequirements {
   /** Minor version this baseline applies to, e.g. "0.75" */
   version: string;
+  /** Minimum Node.js version required to build/run this React Native version, e.g. "18.18.0" */
+  node: string;
   android: AndroidNativeRequirements;
   ios: IosNativeRequirements;
 }
