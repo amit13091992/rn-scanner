@@ -1,6 +1,9 @@
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
 import { detectHermes } from '../detectors/hermes.js';
 import { analyzeHermes } from '../analyzers/hermes.js';
+import { analyzeAndroidEnvironment } from '../analyzers/androidEnvironment.js';
+import { analyzeIosEnvironment } from '../analyzers/iosEnvironment.js';
+import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import {
   printHeader,
   printSection,
@@ -9,6 +12,26 @@ import {
   printInfo,
   printError,
 } from '../utils/terminal.js';
+
+function printEnvironmentRequirements(requirements: EnvironmentRequirement[]): void {
+  for (const req of requirements) {
+    const current = req.current ?? 'not detected';
+    const target = req.required ?? req.recommended;
+    const label = target ? `${req.name}: ${current} (required: ${target})` : `${req.name}: ${current}`;
+    if (req.status === 'ok') {
+      printSuccess(label);
+    } else if (req.status === 'warning') {
+      printWarning(label);
+    } else if (req.status === 'error') {
+      printError(label);
+    } else {
+      printInfo(label);
+    }
+    if (req.reason) {
+      printInfo(`  ${req.reason}`);
+    }
+  }
+}
 
 export interface DoctorOptions {
   json?: boolean;
@@ -23,6 +46,9 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     const rnInfo = detectReactNativeVersions(cwd);
     const hermesInfo = detectHermes(cwd, rnInfo.version);
     const hermes = analyzeHermes(hermesInfo);
+    const rnVersionForEnv = rnInfo.version || '';
+    const androidEnvironment = analyzeAndroidEnvironment(cwd, rnVersionForEnv);
+    const iosEnvironment = analyzeIosEnvironment(cwd, rnVersionForEnv);
 
     if (jsonMode) {
       const result = {
@@ -35,6 +61,8 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
           detectedFrom: hermes.detectedFrom,
           messages: hermes.messages,
         },
+        androidEnvironment,
+        iosEnvironment,
       };
       console.log(JSON.stringify(result, null, 2));
       return;
@@ -64,9 +92,11 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     }
     hermes.messages.forEach((msg) => printWarning(msg));
 
-    printInfo(
-      '\nAndroid and iOS native toolchain checks (Kotlin, AGP, Gradle, Xcode, CocoaPods) are planned for a future release.'
-    );
+    printSection('Android Environment');
+    printEnvironmentRequirements(androidEnvironment);
+
+    printSection('iOS Environment');
+    printEnvironmentRequirements(iosEnvironment);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
