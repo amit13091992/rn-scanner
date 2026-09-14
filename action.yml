@@ -1,0 +1,75 @@
+name: 'RN Native-Toolchain Readiness Gate'
+description: >
+  Scans a React Native project's Node/Java/Gradle/AGP/Kotlin/compileSdk/Xcode toolchain
+  against React Native's native-requirement baseline — via rn-dep-scanner `doctor` (current
+  version) or `upgrade --to <target-version>` (a planned upgrade) — and posts the resulting
+  READY/WARN/BLOCKED verdict as a PR comment (updated in place on re-runs).
+author: 'rn-dep-scanner'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  target-version:
+    description: >
+      React Native version to check upgrade readiness against. Omit to run `doctor` against
+      the currently installed React Native version instead of `upgrade --to`.
+    required: false
+  working-directory:
+    description: 'Directory containing the React Native project to scan.'
+    required: false
+    default: '.'
+  scanner-version:
+    description: 'npm version of rn-dep-scanner to install.'
+    required: false
+    default: 'latest'
+  github-token:
+    description: 'Token used to read/post the PR comment. Needs `pull-requests: write`.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  verdict:
+    description: 'READY, WARN, or BLOCKED.'
+    value: ${{ steps.scan.outputs.verdict }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install rn-dep-scanner
+      shell: bash
+      run: npm install --no-save "rn-dep-scanner@${{ inputs.scanner-version }}"
+
+    - name: Run preflight scan
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [ -n "${{ inputs.target-version }}" ]; then
+          npx rn-dep-scanner upgrade --to "${{ inputs.target-version }}" --json > rn-dep-scanner-result.json
+          echo "kind=upgrade" >> "$GITHUB_OUTPUT"
+        else
+          npx rn-dep-scanner doctor --json > rn-dep-scanner-result.json
+          echo "kind=doctor" >> "$GITHUB_OUTPUT"
+        fi
+        VERDICT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('rn-dep-scanner-result.json','utf8')).verdict)")
+        echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+
+    - name: Post PR comment
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
+      run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-dep-scanner-result.json "${{ steps.scan.outputs.kind }}"
+
+# Usage:
+#
+# - uses: <owner>/rn-dep-scanner@v1
+#   with:
+#     target-version: '0.87'   # optional; omit to check the currently installed RN version
+#   permissions:
+#     pull-requests: write

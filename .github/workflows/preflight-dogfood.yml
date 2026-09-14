@@ -1,0 +1,40 @@
+name: Preflight Dogfood
+
+# Runs this repo's own `doctor` command + PR-comment pipeline against the minimal fixture
+# project in .github/fixtures/sample-app, using the locally built dist/ (not an npm install
+# of the action, since this repo's own unreleased changes are what's being exercised).
+# This validates the scan + formatting + comment-posting mechanics end to end on every PR to
+# this repo; it does not validate action.yml's `npm install rn-dep-scanner@<version>` step,
+# which only runs once this package's changes are actually published.
+
+on:
+  pull_request:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Run doctor against the dogfood fixture
+        working-directory: .github/fixtures/sample-app
+        run: node ../../../dist/index.js doctor --json > rn-dep-scanner-result.json
+
+      - name: Post PR comment
+        working-directory: .github/fixtures/sample-app
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: node ../../../scripts/post-pr-comment.mjs rn-dep-scanner-result.json doctor

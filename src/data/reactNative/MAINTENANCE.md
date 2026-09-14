@@ -34,7 +34,7 @@ or the version history at https://react-native-community.github.io/upgrade-helpe
 | 0.80 - 0.83 | Estimated | Not yet shipped at authoring time; extrapolated from the 0.76-0.79 trend |
 | 0.84 | Estimated | Extrapolated; Node 22.13 baseline carried forward from 0.84 assumption below |
 | 0.85 - 0.86 | Estimated | Extrapolated from 0.83/0.84/0.87 trend |
-| 0.87 | Partially confirmed | compileSdk/buildTools 37 and minCompileSdk 34 from public 0.87 release notes; Android tool versions (JDK/Kotlin/AGP/Gradle/NDK) and all iOS values are still estimated |
+| 0.87 | Partially confirmed | compileSdk/buildTools 37, minCompileSdk 34, AGP 9.0 floor, and Node 22+ from public 0.87 release notes; JDK/Kotlin/Gradle/NDK and all iOS values are still estimated |
 
 Any entry marked "Estimated" should be replaced with a "Confirmed" value (and this table
 updated) as soon as that RN version actually ships and its template can be diffed directly.
