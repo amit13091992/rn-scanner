@@ -297,4 +297,80 @@ describe('buildDependencyGraph (bun - real hierarchy)', () => {
     strictEqual(paths.length, 1);
     strictEqual(paths[0].join(' > '), 'foo > bar');
   });
+
+  test('resolves scoped packages as both direct deps and transitive children', async () => {
+    const dir = makeTempProject();
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'app',
+        version: '1.0.0',
+        dependencies: { '@react-navigation/native': '^7.0.0' },
+      })
+    );
+
+    const bunLockContent = JSON.stringify({
+      lockfileVersion: 0,
+      workspaces: {
+        '': { name: 'app', dependencies: { '@react-navigation/native': '^7.0.0' } },
+      },
+      packages: {
+        '@react-navigation/native': [
+          '@react-navigation/native@7.1.5',
+          '',
+          { dependencies: { '@react-navigation/core': '^7.0.0' } },
+          'sha512-abc',
+        ],
+        '@react-navigation/core': ['@react-navigation/core@7.2.0', '', {}, 'sha512-def'],
+      },
+    });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'bun.lock'), bunLockContent);
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.manager, 'bun');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const paths = findPathsToPackage(graph!, '@react-navigation/core');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), '@react-navigation/native > @react-navigation/core');
+  });
+
+  test('only wires direct edges for dependencies declared in the workspace root', async () => {
+    const dir = makeTempProject();
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'app',
+        version: '1.0.0',
+        dependencies: { foo: '^1.0.0' },
+      })
+    );
+
+    const bunLockContent = JSON.stringify({
+      lockfileVersion: 0,
+      workspaces: {
+        '': { name: 'app', dependencies: { foo: '^1.0.0' } },
+      },
+      packages: {
+        foo: ['foo@1.2.3', '', {}, 'sha512-abc'],
+        // Present in the lockfile (e.g. a stale/leftover entry) but not declared at the root —
+        // should not be wired as a direct root child.
+        stray: ['stray@9.9.9', '', {}, 'sha512-def'],
+      },
+    });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'bun.lock'), bunLockContent);
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.manager, 'bun');
+
+    const rootNode = graph!.nodes.get('')!;
+    strictEqual(rootNode.children.includes('foo'), true);
+    strictEqual(rootNode.children.includes('stray'), false);
+  });
 });
