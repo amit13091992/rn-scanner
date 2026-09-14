@@ -92,6 +92,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const newArchIssues = newArch.results.filter(
       (r) => r.support === 'unsupported' || r.support === 'partial'
     );
+    const newArchUntested = newArch.results.filter((r) => r.support === 'unknown');
 
     const detectedBreakingChanges = breakingChangesResults.filter((r): r is typeof r & { issue: NonNullable<typeof r.issue> } => r.detected && r.issue !== undefined);
     const healthBreakdown: HealthScoreBreakdown = {
@@ -161,6 +162,14 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
             } else {
               printWarning(`${issue.package}@${issue.version} has partial New Architecture support`);
             }
+            if (issue.notes) {
+              console.log(`  └─ ${issue.notes}`);
+            }
+          });
+        }
+        if (newArchUntested.length > 0) {
+          newArchUntested.forEach((issue) => {
+            printInfo(`${issue.package}@${issue.version} has no New Architecture compatibility data`);
             if (issue.notes) {
               console.log(`  └─ ${issue.notes}`);
             }
@@ -321,6 +330,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           isDefault: newArch.status.isNewArchDefault,
           isBridgeRemoved: newArch.status.isBridgeRemoved,
           issues: newArchIssues,
+          untested: newArchUntested,
         },
       };
       console.log(JSON.stringify(result, null, 2));
