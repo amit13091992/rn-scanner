@@ -139,8 +139,8 @@ describe('buildDependencyGraph (npm)', () => {
   });
 });
 
-describe('buildDependencyGraph (yarn - best effort)', () => {
-  test('marks hierarchyComplete: false for a yarn-only project', async () => {
+describe('buildDependencyGraph (yarn - real hierarchy)', () => {
+  test('resolves a direct dependency with no transitive deps', async () => {
     const dir = makeTempProject();
 
     writeFileSync(
@@ -169,14 +169,132 @@ describe('buildDependencyGraph (yarn - best effort)', () => {
     const graph = await buildDependencyGraph(dir);
     ok(graph);
     strictEqual(graph!.manager, 'yarn');
-    strictEqual(graph!.hierarchyComplete, false);
+    strictEqual(graph!.hierarchyComplete, true);
 
     const paths = findPathsToPackage(graph!, 'chalk');
     strictEqual(paths.length, 1);
     strictEqual(paths[0].join(' > '), 'chalk');
 
-    const chalkNode = graph!.nodes.get('node_modules/chalk');
+    const chalkNode = graph!.nodes.get('chalk@5.3.0');
     ok(chalkNode);
     strictEqual(chalkNode!.version, '5.3.0');
+  });
+
+  test('resolves a transitive dependency through a "dependencies:" block', async () => {
+    const dir = makeTempProject();
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'app',
+        version: '1.0.0',
+        dependencies: { foo: '^1.0.0' },
+      })
+    );
+
+    const yarnLockContent = `"foo@^1.0.0":
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/foo/-/foo-1.2.3.tgz#abc"
+  dependencies:
+    bar "^2.0.0"
+
+"bar@^2.0.0":
+  version "2.5.0"
+  resolved "https://registry.yarnpkg.com/bar/-/bar-2.5.0.tgz#def"
+`;
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'yarn.lock'), yarnLockContent);
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const paths = findPathsToPackage(graph!, 'bar');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), 'foo > bar');
+
+    const barNode = graph!.nodes.get('bar@2.5.0');
+    ok(barNode);
+    strictEqual(barNode!.version, '2.5.0');
+  });
+});
+
+describe('buildDependencyGraph (pnpm - real hierarchy)', () => {
+  test('resolves a transitive dependency through a package entry\'s dependencies block', async () => {
+    const dir = makeTempProject();
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'app',
+        version: '1.0.0',
+        dependencies: { foo: '^1.0.0' },
+      })
+    );
+
+    const pnpmLockContent = `lockfileVersion: 5.4
+
+dependencies:
+  foo: 1.2.3
+
+packages:
+  /foo@1.2.3:
+    version: 1.2.3
+    dependencies:
+      bar: 2.5.0
+    dev: false
+
+  /bar@2.5.0:
+    version: 2.5.0
+    dev: false
+`;
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), pnpmLockContent);
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.manager, 'pnpm');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const paths = findPathsToPackage(graph!, 'bar');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), 'foo > bar');
+  });
+});
+
+describe('buildDependencyGraph (bun - real hierarchy)', () => {
+  test('resolves a transitive dependency through a package entry\'s dependencies field', async () => {
+    const dir = makeTempProject();
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'app',
+        version: '1.0.0',
+        dependencies: { foo: '^1.0.0' },
+      })
+    );
+
+    const bunLockContent = JSON.stringify({
+      lockfileVersion: 0,
+      workspaces: {
+        '': { name: 'app', dependencies: { foo: '^1.0.0' } },
+      },
+      packages: {
+        foo: ['foo@1.2.3', '', { dependencies: { bar: '^2.0.0' } }, 'sha512-abc'],
+        bar: ['bar@2.5.0', '', {}, 'sha512-def'],
+      },
+    });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'bun.lock'), bunLockContent);
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.manager, 'bun');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const paths = findPathsToPackage(graph!, 'bar');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), 'foo > bar');
   });
 });
