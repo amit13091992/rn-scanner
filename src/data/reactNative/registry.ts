@@ -220,4 +220,19 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
     },
     ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
   },
+  {
+    version: '0.84',
+    android: {
+      jdk: '17',
+      kotlin: '2.0.21',
+      agp: '8.10.0',
+      gradle: '8.13',
+      compileSdk: '36',
+      targetSdk: '35',
+      minSdk: '24',
+      ndk: '27.1.12297006',
+      buildToolsVersion: '36.0.0',
+    },
+    ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
+  },
 ];
