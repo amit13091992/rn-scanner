@@ -5,6 +5,7 @@ import { detectReactNativeVersions } from '../detectors/reactNative.js';
 import { analyzeAllDependencies } from '../analyzers/compatibility.js';
 import { analyzeBreakingChanges } from '../analyzers/breakingChanges.js';
 import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
+import { analyzeExpoCompatibility } from '../analyzers/expoCompatibility.js';
 import {
   printHeader,
   printSection,
@@ -90,6 +91,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       dependencies.map(d => d.name)
     );
     const newArch = analyzeNewArchitecture(dependencies, rnInfo.version);
+    const expoCompat = analyzeExpoCompatibility(cwd, rnInfo.version, packageJson);
     const newArchIssues = newArch.results.filter(
       (r) => r.support === 'unsupported' || r.support === 'partial'
     );
@@ -174,6 +176,24 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
             printInfo(`${issue.package}@${issue.version} has no New Architecture compatibility data`);
             if (issue.notes) {
               console.log(`  └─ ${issue.notes}`);
+            }
+          });
+        }
+      }
+
+      if (expoCompat.isExpoProject) {
+        printSection('Expo Compatibility');
+        if (expoCompat.sdkVersion !== null) {
+          printInfo(`Expo SDK: ${expoCompat.sdkVersion}`);
+        }
+        if (expoCompat.messages.length === 0) {
+          printSuccess(`React Native ${expoCompat.actualReactNative} matches Expo SDK ${expoCompat.sdkVersion}'s expected version`);
+        } else {
+          expoCompat.messages.forEach((msg, idx) => {
+            if (expoCompat.reactNativeMismatch && idx === 0) {
+              printError(msg);
+            } else {
+              printWarning(msg);
             }
           });
         }
@@ -266,7 +286,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         console.log(`🏗️  New Architecture issues: ${newArchIssues.length}`);
       }
 
-      const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length + newArchUnsupported;
+      const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length + newArchUnsupported + (expoCompat.reactNativeMismatch ? 1 : 0);
       if (criticalIssues > 0 || actionableBreakingChanges.length > 0) {
         console.log(chalk.red.bold('\n⚠️  Action Required:'));
         if (errors > 0) {
@@ -284,9 +304,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         if (newArchUnsupported > 0) {
           console.log(`  • ${newArchUnsupported} package(s) do not support the New Architecture`);
         }
-      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0) {
+        if (expoCompat.reactNativeMismatch) {
+          console.log(`  • React Native version does not match what Expo SDK ${expoCompat.sdkVersion} expects`);
+        }
+      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0 && expoCompat.messages.length === 0) {
         console.log(chalk.green.bold('\n✨ All dependencies look good!'));
-      } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0) {
+      } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0 || expoCompat.messages.length > 0) {
         console.log(chalk.yellow.bold('\n⚠️  Consider addressing detected issues'));
       } else if (notChecked > 0) {
         console.log(chalk.gray.bold('\nℹ No compatibility rules matched any dependencies — nothing was verified'));
@@ -339,6 +362,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           issues: newArchIssues,
           untested: newArchUntested,
         },
+        expo: expoCompat,
       };
       console.log(JSON.stringify(result, null, 2));
     }
