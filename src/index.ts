@@ -26,11 +26,13 @@ program
   .option('--json', 'Output as JSON')
   .option('--strict', 'Exit with code 1 if there are errors')
   .option('--cwd <path>', 'Working directory')
+  .option('--security', 'Also check for known vulnerabilities via OSV.dev (requires network)')
   .action(async (options) => {
     await checkCommand({
       json: options.json || false,
       strict: options.strict || false,
       cwd: options.cwd || process.cwd(),
+      security: options.security || false,
     });
   });
 
