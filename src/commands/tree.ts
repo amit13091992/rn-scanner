@@ -15,6 +15,7 @@ interface JsonTreeNode {
   version: string;
   children: JsonTreeNode[];
   truncated?: boolean;
+  expandedElsewhere?: boolean;
 }
 
 function buildJsonSubtree(
@@ -22,6 +23,7 @@ function buildJsonSubtree(
   nodeId: string,
   depth: number,
   visited: Set<string>,
+  expanded: Set<string>,
   duplicateNames?: Set<string>
 ): JsonTreeNode | null {
   const node = graph.nodes.get(nodeId);
@@ -35,6 +37,11 @@ function buildJsonSubtree(
     return { name: node.name, version: node.version, children: [], truncated: true };
   }
 
+  if (expanded.has(nodeId)) {
+    return { name: node.name, version: node.version, children: [], expandedElsewhere: true };
+  }
+  expanded.add(nodeId);
+
   const nextVisited = new Set(visited);
   nextVisited.add(nodeId);
 
@@ -44,7 +51,7 @@ function buildJsonSubtree(
   }
 
   const children = childIds
-    .map(childId => buildJsonSubtree(graph, childId, depth + 1, nextVisited, duplicateNames))
+    .map(childId => buildJsonSubtree(graph, childId, depth + 1, nextVisited, expanded, duplicateNames))
     .filter((n): n is JsonTreeNode => n !== null);
 
   return { name: node.name, version: node.version, children };
@@ -74,6 +81,7 @@ function printSubtree(
   isLast: boolean,
   depth: number,
   visited: Set<string>,
+  expanded: Set<string>,
   duplicateNames?: Set<string>
 ): void {
   const node = graph.nodes.get(nodeId);
@@ -81,7 +89,10 @@ function printSubtree(
 
   const isRoot = nodeId === graph.root;
   const connector = isLast ? '└─ ' : '├─ ';
-  const label = isRoot ? 'your-app' : `${node.name}@${node.version}`;
+  const alreadyExpanded = !isRoot && expanded.has(nodeId);
+  const label = isRoot
+    ? 'your-app'
+    : `${node.name}@${node.version}${alreadyExpanded ? ' (expanded above)' : ''}`;
 
   if (isRoot) {
     console.log(label);
@@ -89,9 +100,10 @@ function printSubtree(
     console.log(`${prefix}${connector}${label}`);
   }
 
-  if (visited.has(nodeId)) {
+  if (visited.has(nodeId) || alreadyExpanded) {
     return;
   }
+  expanded.add(nodeId);
 
   if (depth > MAX_DEPTH) {
     const childPrefix = isRoot ? '' : prefix + (isLast ? '   ' : '│  ');
@@ -117,6 +129,7 @@ function printSubtree(
       idx === childIds.length - 1,
       depth + 1,
       nextVisited,
+      expanded,
       duplicateNames
     );
   });
@@ -167,7 +180,7 @@ export async function treeCommand(packageName?: string, options: TreeOptions = {
 
     if (jsonMode) {
       const startDepth = packageName ? 0 : 0;
-      const tree = buildJsonSubtree(graph, rootId, startDepth, new Set(), duplicateNames);
+      const tree = buildJsonSubtree(graph, rootId, startDepth, new Set(), new Set(), duplicateNames);
       console.log(
         JSON.stringify(
           {
@@ -190,7 +203,7 @@ export async function treeCommand(packageName?: string, options: TreeOptions = {
       );
     }
 
-    printSubtree(graph, rootId, '', true, 0, new Set(), duplicateNames);
+    printSubtree(graph, rootId, '', true, 0, new Set(), new Set(), duplicateNames);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {

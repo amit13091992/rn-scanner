@@ -1,4 +1,6 @@
+import { coerce, gt } from 'semver';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
+import { fetchLatestVersions } from '../utils/npmRegistry.js';
 import {
   printHeader,
   printSection,
@@ -20,25 +22,14 @@ export interface OutdatedPackage {
   type: 'major' | 'minor' | 'patch';
 }
 
-function getVersionParts(version: string): { major: number; minor: number; patch: number } {
-  const clean = version.replace(/^[^0-9]/, '').split('-')[0];
-  const parts = clean.split('.');
-  return {
-    major: parseInt(parts[0], 10) || 0,
-    minor: parseInt(parts[1], 10) || 0,
-    patch: parseInt(parts[2], 10) || 0,
-  };
-}
-
 function compareVersions(current: string, latest: string): 'major' | 'minor' | 'patch' | null {
-  const curr = getVersionParts(current);
-  const latest_v = getVersionParts(latest);
+  const curr = coerce(current);
+  const latestVersion = coerce(latest);
+  if (!curr || !latestVersion || !gt(latestVersion, curr)) return null;
 
-  if (latest_v.major > curr.major) return 'major';
-  if (latest_v.minor > curr.minor) return 'minor';
-  if (latest_v.patch > curr.patch) return 'patch';
-
-  return null;
+  if (latestVersion.major !== curr.major) return 'major';
+  if (latestVersion.minor !== curr.minor) return 'minor';
+  return 'patch';
 }
 
 export async function outdatedCommand(options: OutdatedOptions = {}): Promise<void> {
@@ -52,6 +43,10 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
 
     const packageJson = readPackageJson(cwd);
     const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
+    const latestVersions = await fetchLatestVersions(dependencies.map(d => d.name));
+    dependencies.forEach(dep => {
+      dep.latestVersion = latestVersions.get(dep.name);
+    });
 
     const outdated: OutdatedPackage[] = [];
 
