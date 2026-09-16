@@ -7,6 +7,7 @@ import { analyzeBreakingChanges } from '../analyzers/breakingChanges.js';
 import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
 import { analyzeExpoCompatibility } from '../analyzers/expoCompatibility.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
+import { loadConfig } from '../utils/config.js';
 import {
   printHeader,
   printSection,
@@ -44,10 +45,16 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       printHeader('RN Deps Scanner');
     }
 
+    const config = loadConfig(cwd);
     const packageJson = readPackageJson(cwd);
     const lockfileInfo = detectPackageManager(cwd);
     const rnInfo = detectReactNativeVersions(cwd);
-    const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
+    const allDependencies = await getAllDependenciesWithResolution(packageJson, cwd);
+    const ignoredPackages = config.ignorePackages ?? [];
+    const dependencies = ignoredPackages.length > 0
+      ? allDependencies.filter((d) => !ignoredPackages.includes(d.name))
+      : allDependencies;
+
 
     if (!jsonMode) {
       printSection('Environment');
@@ -73,6 +80,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
 
     if (!jsonMode) {
       printSection('Analyzing Dependencies');
+      if (ignoredPackages.length > 0) {
+        const actuallyIgnored = allDependencies.filter((d) => ignoredPackages.includes(d.name));
+        if (actuallyIgnored.length > 0) {
+          printInfo(`Ignoring ${actuallyIgnored.length} package(s) per .rn-dep-scanner.json: ${actuallyIgnored.map((d) => d.name).join(', ')}`);
+        }
+      }
     }
     const compatibilityResults = analyzeAllDependencies(
       dependencies,
@@ -94,7 +107,9 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     );
     const newArch = analyzeNewArchitecture(dependencies, rnInfo.version);
     const expoCompat = analyzeExpoCompatibility(cwd, rnInfo.version, packageJson);
-    const securityResult = options.security ? await analyzeSecurityVulnerabilities(dependencies) : null;
+    const securityResult = options.security
+      ? await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities)
+      : null;
     const newArchIssues = newArch.results.filter(
       (r) => r.support === 'unsupported' || r.support === 'partial'
     );
@@ -404,6 +419,9 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         },
         expo: expoCompat,
         ...(options.security ? { security: securityResult } : {}),
+        ...(ignoredPackages.length > 0
+          ? { config: { ignoredPackages: allDependencies.filter((d) => ignoredPackages.includes(d.name)).map((d) => d.name) } }
+          : {}),
       };
       console.log(JSON.stringify(result, null, 2));
     }

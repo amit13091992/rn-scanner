@@ -33,13 +33,27 @@ function resolveQueryableVersion(dep: DependencyInfo): string | null {
  * actually installed, not what's declared.
  */
 export async function analyzeSecurityVulnerabilities(
-  dependencies: DependencyInfo[]
+  dependencies: DependencyInfo[],
+  ignoreVulnerabilityIds: string[] = []
 ): Promise<SecurityAnalysisResult> {
   const packages = dependencies
     .map((d) => ({ name: d.name, version: resolveQueryableVersion(d) }))
     .filter((p): p is { name: string; version: string } => p.version !== null);
 
-  const scan = await queryVulnerabilities(packages);
+  const rawScan = await queryVulnerabilities(packages);
+
+  // Accepted-risk suppression (.rn-dep-scanner.json ignoreVulnerabilities): drop specific
+  // advisory IDs, and drop a package entirely if that removes its last remaining vulnerability
+  // — never invent a "clean" scan when the scan itself failed (scanned: false is untouched).
+  const ignoreSet = new Set(ignoreVulnerabilityIds);
+  const scan: SecurityScanResult = ignoreSet.size === 0
+    ? rawScan
+    : {
+        ...rawScan,
+        results: rawScan.results
+          .map((r) => ({ ...r, vulnerabilities: r.vulnerabilities.filter((v) => !ignoreSet.has(v.id)) }))
+          .filter((r) => r.vulnerabilities.length > 0),
+      };
 
   const summary: Record<VulnerabilitySeverity, number> = {
     critical: 0,

@@ -24,7 +24,10 @@ export function parseBunLock(cwd: string): ParsedLockfile {
 
         const name = spec.slice(0, atIndex);
         const version = spec.slice(atIndex + 1);
-        if (name && version) {
+        // "workspace:..." entries are internal links to a sibling workspace package in a
+        // monorepo, not a real resolved npm install — including them would surface a phantom
+        // dependency with a meaningless "version" in check/outdated/tree output.
+        if (name && version && !version.startsWith('workspace:')) {
           dependencies.set(name, {
             name,
             requestedVersion: version,

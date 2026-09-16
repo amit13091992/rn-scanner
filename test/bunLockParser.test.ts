@@ -94,6 +94,54 @@ describe('Bun Lock Parser', () => {
     strictEqual(result.dependencies.size, 0);
   });
 
+  test('parses correctly in a workspace-style monorepo layout, ignoring the workspaces map', () => {
+    const tmpDir = join(tmpdir(), `bun-workspace-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+
+    const bunLockContent = JSON.stringify({
+      lockfileVersion: 1,
+      workspaces: {
+        '': { name: 'root', dependencies: { react: '^18.2.0' } },
+        'packages/mobile': { name: 'mobile', dependencies: { 'react-native': '^0.83.0' } },
+      },
+      packages: {
+        react: ['react@18.2.0', '', {}, 'sha512-abc'],
+        'react-native': ['react-native@0.83.0', '', {}, 'sha512-def'],
+      },
+    });
+
+    writeFileSync(join(tmpDir, 'bun.lock'), bunLockContent);
+    const result = parseBunLock(tmpDir);
+
+    strictEqual(result.dependencies.size, 2);
+    strictEqual(result.dependencies.get('react')?.resolvedVersion, '18.2.0');
+    strictEqual(result.dependencies.get('react-native')?.resolvedVersion, '0.83.0');
+  });
+
+  test('excludes internal workspace:-linked sibling packages as phantom dependencies', () => {
+    const tmpDir = join(tmpdir(), `bun-workspace-link-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+
+    const bunLockContent = JSON.stringify({
+      lockfileVersion: 1,
+      workspaces: {
+        '': { name: 'root' },
+        'packages/mobile': { name: 'mobile' },
+      },
+      packages: {
+        mobile: ['mobile@workspace:packages/mobile'],
+        react: ['react@18.2.0', '', {}, 'sha512-abc'],
+      },
+    });
+
+    writeFileSync(join(tmpDir, 'bun.lock'), bunLockContent);
+    const result = parseBunLock(tmpDir);
+
+    strictEqual(result.dependencies.size, 1);
+    strictEqual(result.dependencies.has('mobile'), false);
+    strictEqual(result.dependencies.get('react')?.resolvedVersion, '18.2.0');
+  });
+
   test('skips malformed package entries without throwing', () => {
     const tmpDir = join(tmpdir(), `bun-malformed-entry-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });

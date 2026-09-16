@@ -282,3 +282,31 @@ test('analyzeSecurityVulnerabilities - summarizes severities and uses resolvedVe
     globalThis.fetch = originalFetch;
   }
 });
+
+test('analyzeSecurityVulnerabilities - ignoreVulnerabilityIds suppresses a specific advisory and drops the package once empty', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('querybatch')) {
+      return { ok: true, json: async () => ({ results: [{ vulns: [{ id: 'GHSA-ignored' }] }] }) } as Response;
+    }
+    if (urlStr.includes('/vulns/GHSA-ignored')) {
+      return {
+        ok: true,
+        json: async () => ({ id: 'GHSA-ignored', summary: 'Accepted risk', database_specific: { severity: 'LOW' }, references: [] }),
+      } as Response;
+    }
+    return { ok: false } as Response;
+  }) as typeof fetch;
+
+  try {
+    const result = await analyzeSecurityVulnerabilities(
+      [{ name: 'pkg', resolvedVersion: '1.0.0', requestedVersion: '1.0.0', type: 'dependency' }],
+      ['GHSA-ignored']
+    );
+    assert.equal(result.results.length, 0);
+    assert.deepEqual(result.summary, { critical: 0, high: 0, moderate: 0, low: 0, unknown: 0 });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
