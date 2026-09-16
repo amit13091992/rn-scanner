@@ -4,7 +4,7 @@ import { coerce, lt } from 'semver';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import { getReactNativeRequirements } from '../data/reactNative/index.js';
 import type { IosNativeRequirements } from '../types/reactNativeRequirements.js';
-import { detectXcodeHints, detectSwiftVersionHint } from '../detectors/ios/xcode.js';
+import { detectXcodeHints, detectSwiftVersionHint, detectInstalledXcodeVersion } from '../detectors/ios/xcode.js';
 import { detectDeploymentTarget } from '../detectors/ios/deploymentTarget.js';
 import { detectCocoaPodsVersion } from '../detectors/ios/cocoapods.js';
 import { detectRubyVersion } from '../detectors/ios/ruby.js';
@@ -51,21 +51,37 @@ export function analyzeIosEnvironment(cwd: string, rnVersion: string): Environme
 
   const results: EnvironmentRequirement[] = [];
 
-  // Xcode (best-effort — indirect signal only)
+  // Xcode — prefer the actually-installed version (ground truth, like Node detection);
+  // fall back to the indirect project-file hint only when xcodebuild isn't available.
+  const installedXcode = detectInstalledXcodeVersion();
   const xcodeHints = hasIosDir ? detectXcodeHints(cwd) : { version: null, deploymentTarget: null };
-  const xcodeResolved = resolveStatus(xcodeHints.version, iosRequirements?.xcode);
-  results.push({
-    name: 'Xcode',
-    current: xcodeHints.version ?? undefined,
-    required: xcodeResolved.required,
-    status: xcodeHints.version ? xcodeResolved.status : 'unknown',
-    source: xcodeHints.version ? 'ios/*.xcodeproj/project.pbxproj (LastUpgradeCheck)' : undefined,
-    reason: !hasIosDir
-      ? 'No ios/ directory found'
-      : !xcodeHints.version
-        ? 'Xcode version cannot be confidently derived from project files (indirect signal only)'
-        : 'Derived from LastUpgradeCheck in project.pbxproj — best-effort, not a guaranteed installed version',
-  });
+
+  if (installedXcode) {
+    const xcodeResolved = resolveStatus(installedXcode, iosRequirements?.xcode);
+    results.push({
+      name: 'Xcode',
+      current: installedXcode,
+      required: xcodeResolved.required,
+      status: xcodeResolved.status,
+      source: 'xcodebuild -version (installed)',
+    });
+  } else {
+    const xcodeResolved = resolveStatus(xcodeHints.version, iosRequirements?.xcode);
+    results.push({
+      name: 'Xcode',
+      current: xcodeHints.version ?? undefined,
+      required: xcodeResolved.required,
+      // This heuristic is a low-confidence, indirect signal (what last touched the
+      // project file, not what's installed) — never let it hard-block a verdict, only warn.
+      status: !xcodeHints.version ? 'unknown' : xcodeResolved.status === 'error' ? 'warning' : xcodeResolved.status,
+      source: xcodeHints.version ? 'ios/*.xcodeproj/project.pbxproj (LastUpgradeCheck)' : undefined,
+      reason: !hasIosDir
+        ? 'No ios/ directory found'
+        : !xcodeHints.version
+          ? 'Xcode version cannot be confidently derived from project files (indirect signal only), and `xcodebuild` was not available to check the installed version'
+          : 'xcodebuild was not available to check the installed version — derived from LastUpgradeCheck in project.pbxproj instead, which only reflects what last touched the project file, not what is actually installed; downgraded to a warning rather than blocking',
+    });
+  }
 
   // iOS deployment target
   const deploymentTarget = hasIosDir ? detectDeploymentTarget(cwd) : { version: null, source: 'unknown' as const };

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { detectJavaVersion } from '../detectors/android/java.js';
+import { detectJavaVersion, detectInstalledJavaVersion } from '../detectors/android/java.js';
 import { detectKotlinVersion } from '../detectors/android/kotlin.js';
 import { detectAgpVersion } from '../detectors/android/agp.js';
 import { detectGradleVersion } from '../detectors/android/gradle.js';
@@ -57,7 +57,18 @@ export function analyzeAndroidEnvironment(cwd: string, rnVersion: string): Envir
     ];
   }
 
-  const java = detectJavaVersion(cwd);
+  // Prefer the project's declared JDK (authoritative when Gradle is pinned to it via
+  // org.gradle.java.home or sourceCompatibility); fall back to the actually-installed JDK
+  // on this machine (ground truth, like Xcode/Node) when the project doesn't declare one —
+  // increasingly common since recent React Native Gradle Plugin versions set their own
+  // defaults internally rather than requiring an explicit project declaration.
+  let java = detectJavaVersion(cwd);
+  if (!java.version) {
+    const installed = detectInstalledJavaVersion();
+    if (installed) {
+      java = { version: installed, source: 'java -version (installed)' };
+    }
+  }
   const kotlin = detectKotlinVersion(cwd);
   const agp = detectAgpVersion(cwd);
   const gradle = detectGradleVersion(cwd);

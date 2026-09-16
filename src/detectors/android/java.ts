@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 export interface JavaDetectionResult {
   version?: string;
@@ -66,4 +67,38 @@ export function detectJavaVersion(cwd: string): JavaDetectionResult {
   }
 
   return {};
+}
+
+/**
+ * Detects the JDK version actually installed on this machine via `java -version`
+ * (which prints to stderr, e.g. `openjdk version "17.0.9" 2023-10-17`). Ground truth,
+ * analogous to detectInstalledXcodeVersion() — used as a fallback when the project files
+ * don't declare a JDK version explicitly (increasingly common: recent React Native Gradle
+ * Plugin versions set sensible defaults internally rather than requiring an explicit
+ * sourceCompatibility in the project's build.gradle). Never throws: returns null if `java`
+ * isn't on PATH or the call otherwise fails/times out.
+ */
+export function detectInstalledJavaVersion(): string | null {
+  try {
+    // `java -version` writes to stderr (not stdout) even on success, so spawnSync is used
+    // to reliably capture both streams regardless of exit code.
+    const result = spawnSync('java', ['-version'], {
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+    return parseJavaVersionOutput(output);
+  } catch {
+    return null;
+  }
+}
+
+function parseJavaVersionOutput(output: string): string | null {
+  // openjdk version "17.0.9" 2023-10-17  |  java version "1.8.0_392"
+  const match = /version\s+"(\d+)(?:\.(\d+))?(?:\.\d+)?(?:_\d+)?"/.exec(output);
+  if (!match) return null;
+  const major = match[1];
+  // Legacy "1.8" style versioning reports the real major version as the second segment.
+  if (major === '1' && match[2]) return match[2];
+  return major;
 }

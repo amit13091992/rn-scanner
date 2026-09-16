@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { platform } from 'node:os';
 
 function readFileSafe(filePath: string): string | null {
   try {
@@ -28,6 +30,33 @@ export interface XcodeHint {
   version: string | null;
   /** IPHONEOS_DEPLOYMENT_TARGET found directly in project.pbxproj, if any. */
   deploymentTarget: string | null;
+}
+
+/**
+ * Detects the Xcode version actually installed on this machine by shelling out to
+ * `xcodebuild -version`. This is the ground truth for a preflight check — analogous to
+ * how detectNodeVersion() reads the live process.version instead of a static declaration —
+ * and takes priority over the LastUpgradeCheck project-file heuristic below, which only
+ * reflects what last touched the project file, not what's installed now.
+ *
+ * Returns null (never throws) when xcodebuild isn't on PATH, isn't macOS, only the Command
+ * Line Tools are installed (no full Xcode), or the call otherwise fails/times out — any of
+ * which are normal (e.g. running in CI, or on a non-Mac machine reviewing an RN project).
+ */
+export function detectInstalledXcodeVersion(): string | null {
+  if (platform() !== 'darwin') return null;
+
+  try {
+    const output = execFileSync('xcodebuild', ['-version'], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const match = /Xcode\s+([\d.]+)/.exec(output);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

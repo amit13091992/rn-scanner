@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { detectDeploymentTarget } from '../src/detectors/ios/deploymentTarget.js';
 import { detectCocoaPodsVersion } from '../src/detectors/ios/cocoapods.js';
 import { detectRubyVersion } from '../src/detectors/ios/ruby.js';
-import { detectXcodeHints, detectSwiftVersionHint } from '../src/detectors/ios/xcode.js';
+import { detectXcodeHints, detectSwiftVersionHint, detectInstalledXcodeVersion } from '../src/detectors/ios/xcode.js';
 import { analyzeIosEnvironment } from '../src/analyzers/iosEnvironment.js';
 
 function makeTempDir(): string {
@@ -143,12 +143,21 @@ test('detectSwiftVersionHint - always unknown with an explanatory reason', () =>
   assert.ok(hint.reason.length > 0);
 });
 
+test('detectInstalledXcodeVersion - never throws and returns a version string or null', () => {
+  const version = detectInstalledXcodeVersion();
+  assert.ok(version === null || /^\d+(\.\d+)*$/.test(version));
+});
+
 test('analyzeIosEnvironment - missing ios/ directory produces unknown statuses, does not throw', () => {
   const dir = makeTempDir();
   try {
     const results = analyzeIosEnvironment(dir, '0.72.0');
     assert.ok(results.length > 0);
     for (const result of results) {
+      // Xcode is a host-toolchain check (like Node) and is intentionally independent of
+      // whether an ios/ directory exists in the project — it may be ok/error/unknown
+      // depending on what's actually installed on the machine running the CLI.
+      if (result.name === 'Xcode') continue;
       assert.equal(result.status, 'unknown');
     }
   } finally {
