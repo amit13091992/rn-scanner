@@ -7,7 +7,7 @@ import {
 } from '../src/utils/versionDetection.js';
 import type { DependencyInfo } from '../src/types/dependency.js';
 
-test('detectVersionMismatches - finds declared vs installed differences', () => {
+test('detectVersionMismatches - only flags installs outside the declared range', () => {
   const deps: DependencyInfo[] = [
     {
       name: 'react',
@@ -21,13 +21,19 @@ test('detectVersionMismatches - finds declared vs installed differences', () => 
       resolvedVersion: '4.17.21',
       type: 'dependency',
     },
+    {
+      name: 'old-package',
+      requestedVersion: '^2.0.0',
+      resolvedVersion: '1.5.0',
+      type: 'dependency',
+    },
   ];
 
   const mismatches = detectVersionMismatches(deps);
   assert.equal(mismatches.length, 1);
-  assert.equal(mismatches[0].package, 'react');
-  assert.equal(mismatches[0].declared, '^18.0.0');
-  assert.equal(mismatches[0].installed, '18.2.0');
+  assert.equal(mismatches[0].package, 'old-package');
+  assert.equal(mismatches[0].declared, '^2.0.0');
+  assert.equal(mismatches[0].installed, '1.5.0');
 });
 
 test('detectDuplicateDependencies - identifies multiple versions', () => {

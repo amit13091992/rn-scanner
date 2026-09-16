@@ -48,7 +48,7 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
         ? { ...dep, resolvedVersion: toVersion, requestedVersion: toVersion }
         : dep
     );
-    const breakingChanges = analyzeBreakingChanges(dependenciesAtTarget).filter(
+    const breakingChanges = analyzeBreakingChanges(dependenciesAtTarget, dependencies).filter(
       (r): r is typeof r & { issue: NonNullable<typeof r.issue> } => r.detected && r.issue !== undefined
     );
 

@@ -1,4 +1,5 @@
 import type { DependencyInfo } from '../types/dependency.js';
+import { versionInRange } from './versionComparison.js';
 
 export interface VersionMismatch {
   package: string;
@@ -17,7 +18,12 @@ export interface DuplicateDependency {
 
 export function detectVersionMismatches(dependencies: DependencyInfo[]): VersionMismatch[] {
   return dependencies
-    .filter(dep => dep.resolvedVersion && dep.requestedVersion !== dep.resolvedVersion)
+    .filter(
+      dep =>
+        dep.resolvedVersion &&
+        dep.requestedVersion !== dep.resolvedVersion &&
+        !versionInRange(dep.resolvedVersion, dep.requestedVersion)
+    )
     .map(dep => ({
       package: dep.name,
       declared: dep.requestedVersion,

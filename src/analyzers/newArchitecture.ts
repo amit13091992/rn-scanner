@@ -11,6 +11,13 @@ import type { NewArchCheckResult } from '../types/newArchitecture.js';
  */
 const LIKELY_NATIVE_MODULE_PATTERN = /^(react-native-|@react-native-community\/|@react-navigation\/)/;
 
+/**
+ * Build-time/dev tooling that happens to match LIKELY_NATIVE_MODULE_PATTERN but ships no
+ * runtime native module of its own, so it has no New Architecture (Fabric/TurboModules)
+ * status to speak of — flagging it as "verify manually before upgrading" is a false positive.
+ */
+const TOOLING_EXCLUSION_PATTERN = /^@react-native-community\/cli(-|$)|-transformer$/;
+
 export function analyzeNewArchitecture(
   dependencies: DependencyInfo[],
   reactNativeVersion: string | null
@@ -31,7 +38,7 @@ export function analyzeNewArchitecture(
       continue;
     }
 
-    if (LIKELY_NATIVE_MODULE_PATTERN.test(dep.name)) {
+    if (LIKELY_NATIVE_MODULE_PATTERN.test(dep.name) && !TOOLING_EXCLUSION_PATTERN.test(dep.name)) {
       results.push({
         package: dep.name,
         version,

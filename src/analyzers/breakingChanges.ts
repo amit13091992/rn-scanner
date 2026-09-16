@@ -1,6 +1,6 @@
 import type { DependencyInfo } from '../types/dependency.js';
 import type { BreakingChange } from '../types/dependency.js';
-import { versionInRange } from '../utils/versionComparison.js';
+import { versionInRange, parseVersion } from '../utils/versionComparison.js';
 
 export interface BreakingChangeIssue {
   package: string;
@@ -10,6 +10,32 @@ export interface BreakingChangeIssue {
   migrationGuide?: string;
   references?: string[];
   introducedInVersion: string;
+  /**
+   * True when the installed version is far enough past introducedInVersion that this is
+   * very likely already baked into the codebase rather than a pending action item — an
+   * entry with no upper-bounded affectedVersions would otherwise match forever. Since
+   * `check` has no way to know whether the user just upgraded or has been on this version
+   * for years, we downgrade old matches to informational rather than claiming urgency we
+   * can't actually back up.
+   */
+  stale: boolean;
+}
+
+/**
+ * A breaking change is treated as historical/stale once the installed version has drifted
+ * far enough past introducedInVersion that the change is very unlikely to be a fresh,
+ * pending action. Two majors ahead, or (within the same major — the common case for both
+ * 0.x-versioned react-native and typical semver libraries whose minor bumps are frequent
+ * but rarely breaking) six or more minors ahead, counts as stale.
+ */
+function isStaleBreakingChange(introducedInVersion: string, currentVersion: string): boolean {
+  const introduced = parseVersion(introducedInVersion);
+  const current = parseVersion(currentVersion);
+
+  if (current.major !== introduced.major) {
+    return current.major - introduced.major >= 2;
+  }
+  return current.minor - introduced.minor >= 6;
 }
 
 export interface BreakingChangeCheckResult {
@@ -191,7 +217,18 @@ const breakingChangeDatabase: BreakingChange[] = [
   },
 ];
 
-export function detectBreakingChanges(dep: DependencyInfo): BreakingChangeCheckResult {
+/**
+ * @param staleAsOfVersion The version to measure staleness from — normally the same as
+ *   dep's own version, but callers evaluating a *hypothetical* future version (e.g.
+ *   `upgrade --to` simulating react-native at the target version) should pass the actual
+ *   currently-installed version here instead. Otherwise a change introduced long before an
+ *   ambitious target version gets wrongly marked stale/"already migrated" when it's really a
+ *   brand new, actionable change for that specific upgrade.
+ */
+export function detectBreakingChanges(
+  dep: DependencyInfo,
+  staleAsOfVersion?: string
+): BreakingChangeCheckResult {
   const version = dep.resolvedVersion || dep.requestedVersion;
   const relevantChanges = breakingChangeDatabase.filter(change => change.package === dep.name);
 
@@ -221,6 +258,7 @@ export function detectBreakingChanges(dep: DependencyInfo): BreakingChangeCheckR
           migrationGuide: change.migrationGuide,
           references: change.references,
           introducedInVersion: change.introducedInVersion,
+          stale: isStaleBreakingChange(change.introducedInVersion, staleAsOfVersion ?? version),
         },
       };
     }
@@ -234,8 +272,20 @@ export function detectBreakingChanges(dep: DependencyInfo): BreakingChangeCheckR
   };
 }
 
+/**
+ * @param referenceDependencies The actual currently-installed dependencies, used only to
+ *   anchor staleness when `dependencies` simulates a future/target state (see
+ *   `detectBreakingChanges`'s `staleAsOfVersion`). Defaults to `dependencies` itself, which
+ *   makes staleness a no-op adjustment for plain "check what I have now" callers.
+ */
 export function analyzeBreakingChanges(
-  dependencies: DependencyInfo[]
+  dependencies: DependencyInfo[],
+  referenceDependencies: DependencyInfo[] = dependencies
 ): BreakingChangeCheckResult[] {
-  return dependencies.map(dep => detectBreakingChanges(dep));
+  const referenceByName = new Map(referenceDependencies.map(dep => [dep.name, dep]));
+  return dependencies.map(dep => {
+    const reference = referenceByName.get(dep.name);
+    const staleAsOfVersion = reference ? (reference.resolvedVersion || reference.requestedVersion) : undefined;
+    return detectBreakingChanges(dep, staleAsOfVersion);
+  });
 }

@@ -47,3 +47,15 @@ test('analyzeNewArchitecture - untested packages are not reported when New Archi
   assert.equal(status.isNewArchDefault, false);
   assert.equal(results.length, 0);
 });
+
+test('analyzeNewArchitecture - does not flag CLI/build tooling that ships no runtime native module', () => {
+  const dependencies = [
+    makeDep('@react-native-community/cli', '20.0.0'),
+    makeDep('@react-native-community/cli-platform-android', '20.0.0'),
+    makeDep('react-native-svg-transformer', '1.5.3'),
+  ];
+
+  const { results } = analyzeNewArchitecture(dependencies, '0.83.0');
+
+  assert.equal(results.length, 0);
+});

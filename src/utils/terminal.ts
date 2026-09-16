@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import { computeHealthScore, type HealthScoreInput } from './healthScore.js';
 
 export interface VersionInfo {
   declared?: string;
@@ -6,13 +7,7 @@ export interface VersionInfo {
   latest?: string;
 }
 
-export interface HealthScoreBreakdown {
-  compatible: number;
-  warnings: number;
-  errors: number;
-  notChecked: number;
-  total: number;
-}
+export type HealthScoreBreakdown = HealthScoreInput;
 
 export function printHeader(title: string): void {
   const line = '━'.repeat(50);
@@ -55,19 +50,13 @@ export function printVersionComparison(
 }
 
 export function printHealthScore(breakdown: HealthScoreBreakdown): void {
-  const analyzed = breakdown.total - breakdown.notChecked;
-  let score = 100;
-
-  if (analyzed > 0) {
-    const good = breakdown.compatible;
-    const bad = breakdown.warnings + breakdown.errors;
-    score = Math.round((good / (good + bad)) * 100);
-  } else if (breakdown.total > 0) {
-    score = 0;
-  }
+  const { score, analyzed, total, lowCoverage } = computeHealthScore(breakdown);
 
   const scoreColor = score >= 80 ? chalk.green : score >= 60 ? chalk.yellow : chalk.red;
-  console.log(`\n${scoreColor.bold(`Health Score: ${score}/100`)}`);
+  console.log(`\n${scoreColor.bold(`Health Score: ${score}/100`)} ${chalk.gray(`(based on ${analyzed} of ${total} dependencies with known compatibility rules)`)}`);
+  if (lowCoverage) {
+    console.log(chalk.gray('  ℹ Most dependencies have no compatibility rules yet — this score reflects only the few that were checked, not overall project health'));
+  }
 
   console.log(chalk.gray('  ├─ ✓ Compatible:    ') + chalk.green(breakdown.compatible));
   if (breakdown.warnings > 0) {

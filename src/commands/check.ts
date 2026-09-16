@@ -23,6 +23,7 @@ import {
   isReactNativeCompatible,
 } from '../utils/versionDetection.js';
 import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
+import { computeHealthScore } from '../utils/healthScore.js';
 
 export interface CheckOptions {
   json?: boolean;
@@ -95,6 +96,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const newArchUntested = newArch.results.filter((r) => r.support === 'unknown');
 
     const detectedBreakingChanges = breakingChangesResults.filter((r): r is typeof r & { issue: NonNullable<typeof r.issue> } => r.detected && r.issue !== undefined);
+    const actionableBreakingChanges = detectedBreakingChanges.filter(c => !c.issue.stale);
     const healthBreakdown: HealthScoreBreakdown = {
       compatible,
       warnings,
@@ -208,18 +210,25 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       if (detectedBreakingChanges.length > 0) {
         printSection('Breaking Changes');
         detectedBreakingChanges.forEach((change) => {
-          const icon = change.issue.severity === 'critical' ? '🔴 CRITICAL' : '🟠 HIGH';
+          const icon = change.issue.stale
+            ? 'ℹ️  HISTORICAL'
+            : change.issue.severity === 'critical' ? '🔴 CRITICAL' : '🟠 HIGH';
           console.log(`\n${icon}  ${change.issue.package}@${change.issue.version}`);
+          console.log(`  ├─ Introduced in: ${change.issue.introducedInVersion}`);
           console.log('  ├─ Changes:');
-          change.issue.changes.forEach((msg: string, idx: number) => {
-            const isLast = idx === change.issue.changes.length - 1;
-            console.log(`  ${isLast ? '└' : '├'}  ✗ ${msg}`);
+          change.issue.changes.forEach((msg: string) => {
+            console.log(`  ├  ✗ ${msg}`);
           });
           if (change.issue.migrationGuide) {
             console.log(`  ├─ Migration Guide: ${change.issue.migrationGuide}`);
           }
-          console.log('  ├─ Severity: ' + (change.issue.severity === 'critical' ? 'CRITICAL - Must be addressed' : 'HIGH - Should be addressed soon'));
-          console.log('  └─ Action: Review migration guide and update your code accordingly');
+          if (change.issue.stale) {
+            console.log('  ├─ Status: Already part of the installed version — likely already migrated');
+            console.log('  └─ Action: For awareness only; verify your code accounts for this if not already');
+          } else {
+            console.log('  ├─ Severity: ' + (change.issue.severity === 'critical' ? 'CRITICAL - Must be addressed' : 'HIGH - Should be addressed soon'));
+            console.log('  └─ Action: Review migration guide and update your code accordingly');
+          }
         });
       }
 
@@ -246,17 +255,19 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         console.log(`⚠️  Peer conflicts: ${peerConflicts.length}`);
       }
       if (detectedBreakingChanges.length > 0) {
-        console.log(`🔨 Breaking changes: ${detectedBreakingChanges.length}`);
+        const staleCount = detectedBreakingChanges.length - actionableBreakingChanges.length;
+        const staleNote = staleCount > 0 ? ` (${staleCount} historical, for awareness only)` : '';
+        console.log(`🔨 Breaking changes: ${detectedBreakingChanges.length}${staleNote}`);
       }
       if (deprecatedPkgs.length > 0) {
-        console.log(`📦 Deprecated packages: ${deprecatedPkgs.length}`);
+        console.log(`🗑️  Deprecated packages: ${deprecatedPkgs.length}`);
       }
       if (newArchIssues.length > 0) {
         console.log(`🏗️  New Architecture issues: ${newArchIssues.length}`);
       }
 
       const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length + newArchUnsupported;
-      if (criticalIssues > 0 || detectedBreakingChanges.length > 0) {
+      if (criticalIssues > 0 || actionableBreakingChanges.length > 0) {
         console.log(chalk.red.bold('\n⚠️  Action Required:'));
         if (errors > 0) {
           console.log(`  • ${errors} compatibility error(s) need fixing`);
@@ -267,13 +278,13 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         if (peerConflicts.length > 0) {
           console.log(`  • ${peerConflicts.length} peer dependency conflict(s)`);
         }
-        if (detectedBreakingChanges.length > 0) {
-          console.log(`  • ${detectedBreakingChanges.length} breaking change(s) require code updates`);
+        if (actionableBreakingChanges.length > 0) {
+          console.log(`  • ${actionableBreakingChanges.length} breaking change(s) require code updates`);
         }
         if (newArchUnsupported > 0) {
           console.log(`  • ${newArchUnsupported} package(s) do not support the New Architecture`);
         }
-      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0) {
+      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0) {
         console.log(chalk.green.bold('\n✨ All dependencies look good!'));
       } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0) {
         console.log(chalk.yellow.bold('\n⚠️  Consider addressing detected issues'));
@@ -283,6 +294,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     }
 
     if (jsonMode) {
+      const healthScoreResult = computeHealthScore(healthBreakdown);
       const result = {
         reactNative: {
           current: rnInfo.version,
@@ -298,18 +310,13 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           notChecked,
           warnings,
           errors,
-          healthScore: healthBreakdown.total > 0
-            ? (() => {
-              const analyzed = healthBreakdown.total - healthBreakdown.notChecked;
-              if (analyzed > 0) {
-                const good = healthBreakdown.compatible;
-                const bad = healthBreakdown.warnings + healthBreakdown.errors;
-                return Math.round((good / (good + bad)) * 100);
-              }
-              return healthBreakdown.total > 0 ? 0 : 100;
-            })()
-            : 100,
+          healthScore: healthScoreResult.score,
+          healthScoreCoverage: {
+            analyzed: healthScoreResult.analyzed,
+            lowCoverage: healthScoreResult.lowCoverage,
+          },
           breakingChanges: detectedBreakingChanges.length,
+          actionableBreakingChanges: actionableBreakingChanges.length,
           versionMismatches: versionMismatches.length,
           duplicateDependencies: duplicates.length,
           peerConflicts: peerConflicts.length,
