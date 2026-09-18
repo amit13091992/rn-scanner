@@ -55,10 +55,12 @@ program
   .description('Check React Native environment health (Hermes, native toolchain)')
   .option('--json', 'Output as JSON')
   .option('--cwd <path>', 'Working directory')
+  .option('--ipa <path>', 'Path to a built .ipa/.xcarchive to check for dSYM presence')
   .action(async (options) => {
     await doctorCommand({
       json: options.json || false,
       cwd: options.cwd || process.cwd(),
+      ipa: options.ipa || undefined,
     });
   });
 

@@ -6,6 +6,8 @@ import { analyzeAllDependencies } from '../analyzers/compatibility.js';
 import { analyzeBreakingChanges } from '../analyzers/breakingChanges.js';
 import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
 import { analyzeExpoCompatibility } from '../analyzers/expoCompatibility.js';
+import { analyzeExpoGoSupport } from '../analyzers/expoGoSupport.js';
+import { analyzeDependencyCompleteness } from '../analyzers/dependencyCompleteness.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { loadConfig } from '../utils/config.js';
 import {
@@ -27,6 +29,20 @@ import {
 } from '../utils/versionDetection.js';
 import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
 import { computeHealthScore } from '../utils/healthScore.js';
+
+function installCommand(manager: string, packageName: string, range: string): string {
+  const spec = `${packageName}@${range}`;
+  switch (manager) {
+    case 'yarn':
+      return `yarn add ${spec}`;
+    case 'pnpm':
+      return `pnpm add ${spec}`;
+    case 'bun':
+      return `bun add ${spec}`;
+    default:
+      return `npm install ${spec}`;
+  }
+}
 
 export interface CheckOptions {
   json?: boolean;
@@ -107,6 +123,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     );
     const newArch = analyzeNewArchitecture(dependencies, rnInfo.version);
     const expoCompat = analyzeExpoCompatibility(cwd, rnInfo.version, packageJson);
+    const expoGoSupport = analyzeExpoGoSupport(dependencies, expoCompat.isExpoProject);
+    const expoGoUnsupported = expoGoSupport.filter((r) => r.support === 'unsupported');
+    const expoGoUnknown = expoGoSupport.filter((r) => r.support === 'unknown');
+    const dependencyCompleteness = analyzeDependencyCompleteness(cwd, dependencies);
+    const requiredMissingDeps = dependencyCompleteness.missing.filter((m) => !m.optional);
+    const optionalMissingDeps = dependencyCompleteness.missing.filter((m) => m.optional);
     const securityResult = options.security
       ? await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities)
       : null;
@@ -215,6 +237,26 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
             }
           });
         }
+
+        if (expoGoSupport.length > 0) {
+          printSection('Expo Go Support');
+          if (expoGoUnsupported.length === 0 && expoGoUnknown.length === 0) {
+            printSuccess('All checked dependencies work in Expo Go');
+          } else {
+            expoGoUnsupported.forEach((issue) => {
+              printError(`${issue.package}@${issue.version} is not supported in Expo Go`);
+              if (issue.reason) {
+                console.log(`  └─ ${issue.reason}`);
+              }
+            });
+            expoGoUnknown.forEach((issue) => {
+              printInfo(`${issue.package}@${issue.version} has no Expo Go compatibility data`);
+              if (issue.notes) {
+                console.log(`  └─ ${issue.notes}`);
+              }
+            });
+          }
+        }
       }
 
       if (options.security) {
@@ -308,6 +350,25 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       }
 
 
+      if (dependencyCompleteness.missing.length > 0 || dependencyCompleteness.notChecked.length > 0) {
+        printSection('Sub-dependency Completeness');
+        requiredMissingDeps.forEach((m) => {
+          const kindLabel = m.kind === 'peerDependency' ? 'peer dependency' : 'dependency';
+          if (m.installedVersion === null) {
+            printError(`${m.parent} requires ${kindLabel} ${m.dependency}@${m.requiredRange}, but it is not installed`);
+          } else {
+            printError(`${m.parent} requires ${kindLabel} ${m.dependency}@${m.requiredRange}, but ${m.installedVersion} is installed`);
+          }
+          console.log(`  └─ Run: ${installCommand(lockfileInfo.manager, m.dependency, m.requiredRange)}`);
+        });
+        optionalMissingDeps.forEach((m) => {
+          printInfo(`${m.parent} has an optional peer dependency ${m.dependency}@${m.requiredRange} that is not satisfied`);
+        });
+        dependencyCompleteness.notChecked.forEach((n) => {
+          printInfo(`${n.parent}: ${n.reason}`);
+        });
+      }
+
       printSection('Summary');
       printHealthScore(healthBreakdown);
 
@@ -340,8 +401,14 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       if (newArchIssues.length > 0) {
         console.log(`🏗️  New Architecture issues: ${newArchIssues.length}`);
       }
+      if (expoGoUnsupported.length > 0) {
+        console.log(`📱 Expo Go incompatible packages: ${expoGoUnsupported.length}`);
+      }
+      if (requiredMissingDeps.length > 0) {
+        console.log(`🧩 Missing sub-dependencies: ${requiredMissingDeps.length}`);
+      }
 
-      const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length + newArchUnsupported + (expoCompat.reactNativeMismatch ? 1 : 0);
+      const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length + newArchUnsupported + (expoCompat.reactNativeMismatch ? 1 : 0) + expoGoUnsupported.length + requiredMissingDeps.length;
       if (criticalIssues > 0 || actionableBreakingChanges.length > 0) {
         console.log(chalk.red.bold('\n⚠️  Action Required:'));
         if (errors > 0) {
@@ -362,9 +429,15 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         if (expoCompat.reactNativeMismatch) {
           console.log(`  • React Native version does not match what Expo SDK ${expoCompat.sdkVersion} expects`);
         }
-      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0 && expoCompat.messages.length === 0) {
+        if (expoGoUnsupported.length > 0) {
+          console.log(`  • ${expoGoUnsupported.length} package(s) are not supported in Expo Go`);
+        }
+        if (requiredMissingDeps.length > 0) {
+          console.log(`  • ${requiredMissingDeps.length} sub-dependency requirement(s) missing or unsatisfied`);
+        }
+      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0 && expoCompat.messages.length === 0 && expoGoUnsupported.length === 0 && dependencyCompleteness.missing.length === 0) {
         console.log(chalk.green.bold('\n✨ All dependencies look good!'));
-      } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0 || expoCompat.messages.length > 0) {
+      } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0 || expoCompat.messages.length > 0 || expoGoUnsupported.length > 0 || dependencyCompleteness.missing.length > 0) {
         console.log(chalk.yellow.bold('\n⚠️  Consider addressing detected issues'));
       } else if (notChecked > 0) {
         console.log(chalk.gray.bold('\nℹ No compatibility rules matched any dependencies — nothing was verified'));
@@ -400,6 +473,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           peerConflicts: peerConflicts.length,
           deprecatedPackages: deprecatedPkgs.length,
           newArchitectureIssues: newArchIssues.length,
+          missingSubDependencies: requiredMissingDeps.length,
         },
         issues: compatibilityResults.filter((i) => i.status !== 'compatible' && i.status !== 'not-checked'),
         versionMismatches: versionMismatches,
@@ -418,6 +492,8 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           untested: newArchUntested,
         },
         expo: expoCompat,
+        ...(expoCompat.isExpoProject ? { expoGoSupport } : {}),
+        dependencyCompleteness,
         ...(options.security ? { security: securityResult } : {}),
         ...(ignoredPackages.length > 0
           ? { config: { ignoredPackages: allDependencies.filter((d) => ignoredPackages.includes(d.name)).map((d) => d.name) } }

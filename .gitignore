@@ -3,6 +3,11 @@ node_modules/
 .pnp
 .pnp.js
 
+# ...except hand-built node_modules fixtures under test-fixtures/, which are real test inputs
+# (dependencyCompleteness.test.ts, pageSize.test.ts), not installed packages.
+!test-fixtures/**/node_modules/
+!test-fixtures/**/node_modules/**
+
 # Testing
 coverage/
 .nyc_output/
