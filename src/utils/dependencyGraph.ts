@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import type { DependencyGraph, DependencyGraphNode } from '../types/dependencyGraph.js';
 import { detectPackageManager, parseLockfile } from './lockfile.js';
 import { readPackageJson, getAllDependencies } from './packageJson.js';
+import { resolveDependencyRoot } from './projectRoot.js';
 
 interface NPMLockPackageRaw {
   version?: string;
@@ -231,7 +232,7 @@ function stripNpmProtocol(spec: string): string {
 }
 
 async function buildYarnGraph(cwd: string): Promise<DependencyGraph | null> {
-  const yarnLockPath = resolve(cwd, 'yarn.lock');
+  const yarnLockPath = resolve(resolveDependencyRoot(cwd), 'yarn.lock');
   if (!existsSync(yarnLockPath)) return null;
 
   const content = readFileSync(yarnLockPath, 'utf-8');
@@ -431,7 +432,7 @@ function parsePnpmRootDependencies(content: string): Map<string, string> {
 }
 
 async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
-  const pnpmLockPath = resolve(cwd, 'pnpm-lock.yaml');
+  const pnpmLockPath = resolve(resolveDependencyRoot(cwd), 'pnpm-lock.yaml');
   if (!existsSync(pnpmLockPath)) return null;
 
   const content = readFileSync(pnpmLockPath, 'utf-8');
@@ -574,7 +575,7 @@ function parseBunPackages(raw: string): { entries: BunPackageEntry[]; rootDeps: 
 }
 
 async function buildBunGraph(cwd: string): Promise<DependencyGraph | null> {
-  const bunLockPath = resolve(cwd, 'bun.lock');
+  const bunLockPath = resolve(resolveDependencyRoot(cwd), 'bun.lock');
   if (!existsSync(bunLockPath)) return null;
 
   let parsed: { entries: BunPackageEntry[]; rootDeps: Record<string, string> };

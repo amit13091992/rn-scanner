@@ -2,12 +2,15 @@ import { test, describe } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
 import { writeFileSync, mkdirSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import {
   buildDependencyGraph,
   findPathsToPackage,
   findDuplicateVersionPaths,
 } from '../src/utils/dependencyGraph.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function makeTempProject(): string {
   return mkdtempSync(join(tmpdir(), 'dep-graph-test-'));
@@ -372,5 +375,19 @@ describe('buildDependencyGraph (bun - real hierarchy)', () => {
     const rootNode = graph!.nodes.get('')!;
     strictEqual(rootNode.children.includes('foo'), true);
     strictEqual(rootNode.children.includes('stray'), false);
+  });
+});
+
+describe('buildDependencyGraph (yarn workspace)', () => {
+  test('finds the workspace root yarn.lock when run from a package with no lockfile of its own', async () => {
+    const dir = join(__dirname, '..', 'test-fixtures', 'monorepo-yarn', 'packages', 'mobile-app');
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.manager, 'yarn');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const paths = findPathsToPackage(graph!, 'left-pad');
+    ok(paths.length > 0);
   });
 });

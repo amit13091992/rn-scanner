@@ -10,6 +10,7 @@ import { readPackageJson, getAllDependenciesWithResolution } from '../utils/pack
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import type { PageSizeCheckResult } from '../types/pageSize.js';
 import { verdictFromRequirements, combineVerdicts } from '../utils/verdict.js';
+import { Profiler } from '../utils/profiler.js';
 import {
   printHeader,
   printSection,
@@ -17,6 +18,7 @@ import {
   printWarning,
   printInfo,
   printError,
+  printProfile,
 } from '../utils/terminal.js';
 
 function printEnvironmentRequirements(requirements: EnvironmentRequirement[]): void {
@@ -43,26 +45,34 @@ export interface DoctorOptions {
   json?: boolean;
   cwd?: string;
   ipa?: string;
+  profile?: boolean;
 }
 
 export async function doctorCommand(options: DoctorOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
   const jsonMode = !!options.json;
+  const profiler = new Profiler(!!options.profile);
 
   try {
-    const rnInfo = detectReactNativeVersions(cwd);
-    const hermesInfo = detectHermes(cwd, rnInfo.version);
+    const rnInfo = await profiler.time('detectReactNativeVersions', () => detectReactNativeVersions(cwd));
+    const hermesInfo = await profiler.time('detectHermes', () => detectHermes(cwd, rnInfo.version));
     const hermes = analyzeHermes(hermesInfo);
     const rnVersionForEnv = rnInfo.version || '';
-    const androidEnvironment = analyzeAndroidEnvironment(cwd, rnVersionForEnv);
-    const iosEnvironment = analyzeIosEnvironment(cwd, rnVersionForEnv);
+    const androidEnvironment = await profiler.time('analyzeAndroidEnvironment', () =>
+      analyzeAndroidEnvironment(cwd, rnVersionForEnv)
+    );
+    const iosEnvironment = await profiler.time('analyzeIosEnvironment', () =>
+      analyzeIosEnvironment(cwd, rnVersionForEnv)
+    );
     const nodeEnvironment = analyzeNodeEnvironment(rnVersionForEnv);
 
     let pageSize: PageSizeCheckResult[] = [];
     try {
-      const packageJson = readPackageJson(cwd);
-      const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
-      pageSize = analyzePageSize(cwd, dependencies);
+      await profiler.time('analyzePageSize (node_modules walk)', async () => {
+        const packageJson = readPackageJson(cwd);
+        const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
+        pageSize = analyzePageSize(cwd, dependencies);
+      });
     } catch {
       // No readable package.json here — page-size check simply has nothing to scan.
     }
@@ -101,6 +111,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
         iosEnvironment,
         pageSize16k: pageSize,
         ...(iosPackage ? { iosPackage } : {}),
+        ...(options.profile ? { profile: { steps: profiler.report(), totalMs: profiler.totalMs() } } : {}),
       };
       console.log(JSON.stringify(result, null, 2));
       return;
@@ -167,6 +178,10 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
         printWarning(`Could not inspect ${options.ipa}`);
       }
       iosPackage.notes.forEach((note) => printInfo(note));
+    }
+
+    if (options.profile) {
+      printProfile(profiler.report(), profiler.totalMs());
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

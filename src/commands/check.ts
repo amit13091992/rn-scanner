@@ -10,6 +10,7 @@ import { analyzeExpoGoSupport } from '../analyzers/expoGoSupport.js';
 import { analyzeDependencyCompleteness } from '../analyzers/dependencyCompleteness.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { loadConfig } from '../utils/config.js';
+import { Profiler } from '../utils/profiler.js';
 import {
   printHeader,
   printSection,
@@ -19,6 +20,7 @@ import {
   printInfo,
   printVersionComparison,
   printHealthScore,
+  printProfile,
   type HealthScoreBreakdown,
 } from '../utils/terminal.js';
 import {
@@ -49,10 +51,12 @@ export interface CheckOptions {
   strict?: boolean;
   cwd?: string;
   security?: boolean;
+  profile?: boolean;
 }
 
 export async function checkCommand(options: CheckOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
+  const profiler = new Profiler(!!options.profile);
 
   try {
     const jsonMode = !!options.json;
@@ -61,11 +65,14 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       printHeader('RN Deps Scanner');
     }
 
-    const config = loadConfig(cwd);
-    const packageJson = readPackageJson(cwd);
+    const { config, warnings: configWarnings } = loadConfig(cwd);
+    const packageJson = await profiler.time('readPackageJson', () => readPackageJson(cwd));
     const lockfileInfo = detectPackageManager(cwd);
-    const rnInfo = detectReactNativeVersions(cwd);
-    const allDependencies = await getAllDependenciesWithResolution(packageJson, cwd);
+    const rnInfo = await profiler.time('detectReactNativeVersions', () => detectReactNativeVersions(cwd));
+    const allDependencies = await profiler.time(
+      'getAllDependenciesWithResolution (lockfile parse)',
+      () => getAllDependenciesWithResolution(packageJson, cwd)
+    );
     const ignoredPackages = config.ignorePackages ?? [];
     const dependencies = ignoredPackages.length > 0
       ? allDependencies.filter((d) => !ignoredPackages.includes(d.name))
@@ -73,6 +80,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
 
 
     if (!jsonMode) {
+      configWarnings.forEach((w) => printWarning(w));
       printSection('Environment');
       if (rnInfo.version) {
         printSuccess(`React Native: ${rnInfo.version}`);
@@ -103,12 +111,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         }
       }
     }
-    const compatibilityResults = analyzeAllDependencies(
-      dependencies,
-      rnInfo.version,
-      rnInfo.react
+    const compatibilityResults = await profiler.time('analyzeAllDependencies', () =>
+      analyzeAllDependencies(dependencies, rnInfo.version, rnInfo.react)
     );
-    const breakingChangesResults = analyzeBreakingChanges(dependencies);
+    const breakingChangesResults = await profiler.time('analyzeBreakingChanges', () =>
+      analyzeBreakingChanges(dependencies)
+    );
 
     const compatible = compatibilityResults.filter((i) => i.status === 'compatible').length;
     const notChecked = compatibilityResults.filter((i) => i.status === 'not-checked').length;
@@ -121,15 +129,25 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const deprecatedPkgs = checkDeprecatedPackages(
       dependencies.map(d => d.name)
     );
-    const newArch = analyzeNewArchitecture(dependencies, rnInfo.version);
-    const expoCompat = analyzeExpoCompatibility(cwd, rnInfo.version, packageJson);
-    const expoGoSupport = analyzeExpoGoSupport(dependencies, expoCompat.isExpoProject);
+    const newArch = await profiler.time('analyzeNewArchitecture', () =>
+      analyzeNewArchitecture(dependencies, rnInfo.version)
+    );
+    const expoCompat = await profiler.time('analyzeExpoCompatibility', () =>
+      analyzeExpoCompatibility(cwd, rnInfo.version, packageJson)
+    );
+    const expoGoSupport = await profiler.time('analyzeExpoGoSupport', () =>
+      analyzeExpoGoSupport(dependencies, expoCompat.isExpoProject)
+    );
     const expoGoUnsupported = expoGoSupport.filter((r) => r.support === 'unsupported');
     const expoGoUnknown = expoGoSupport.filter((r) => r.support === 'unknown');
-    const dependencyCompleteness = analyzeDependencyCompleteness(cwd, dependencies);
+    const dependencyCompleteness = await profiler.time('analyzeDependencyCompleteness (node_modules walk)', () =>
+      analyzeDependencyCompleteness(cwd, dependencies)
+    );
     const requiredMissingDeps = dependencyCompleteness.missing.filter((m) => !m.optional);
     const securityResult = options.security
-      ? await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities)
+      ? await profiler.time('analyzeSecurityVulnerabilities (OSV.dev network call)', () =>
+          analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities)
+        )
       : null;
     const newArchIssues = newArch.results.filter(
       (r) => r.support === 'unsupported' || r.support === 'partial'
@@ -444,6 +462,10 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       } else if (notChecked > 0) {
         console.log(chalk.gray.bold('\nℹ No compatibility rules matched any dependencies — nothing was verified'));
       }
+
+      if (options.profile) {
+        printProfile(profiler.report(), profiler.totalMs());
+      }
     }
 
     if (jsonMode) {
@@ -497,9 +519,17 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         ...(expoCompat.isExpoProject ? { expoGoSupport } : {}),
         dependencyCompleteness,
         ...(options.security ? { security: securityResult } : {}),
-        ...(ignoredPackages.length > 0
-          ? { config: { ignoredPackages: allDependencies.filter((d) => ignoredPackages.includes(d.name)).map((d) => d.name) } }
+        ...(ignoredPackages.length > 0 || configWarnings.length > 0
+          ? {
+              config: {
+                ...(ignoredPackages.length > 0
+                  ? { ignoredPackages: allDependencies.filter((d) => ignoredPackages.includes(d.name)).map((d) => d.name) }
+                  : {}),
+                ...(configWarnings.length > 0 ? { warnings: configWarnings } : {}),
+              },
+            }
           : {}),
+        ...(options.profile ? { profile: { steps: profiler.report(), totalMs: profiler.totalMs() } } : {}),
       };
       console.log(JSON.stringify(result, null, 2));
     }

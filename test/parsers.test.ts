@@ -137,4 +137,38 @@ describe('NPM Lock Parser', () => {
     strictEqual(result.manager, 'npm');
     strictEqual(result.dependencies.size > 0, true);
   });
+
+  test('resolves each top-level package to its own name, not the shared "node_modules" path segment', () => {
+    const npmLockContent = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        'node_modules/react': { version: '18.2.0' },
+        'node_modules/react-native': { version: '0.72.0' },
+        'node_modules/@babel/core': { version: '7.24.0' },
+      },
+    });
+
+    const parser = new NPMLockParser();
+    const result = parser.parse(npmLockContent);
+
+    strictEqual(result.dependencies.size, 3);
+    strictEqual(result.dependencies.get('react')?.resolvedVersion, '18.2.0');
+    strictEqual(result.dependencies.get('react-native')?.resolvedVersion, '0.72.0');
+    strictEqual(result.dependencies.get('@babel/core')?.resolvedVersion, '7.24.0');
+  });
+
+  test('resolves a nested dependency to its own name, not "node_modules"', () => {
+    const npmLockContent = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        'node_modules/react': { version: '18.2.0' },
+        'node_modules/react/node_modules/loose-envify': { version: '1.4.0' },
+      },
+    });
+
+    const parser = new NPMLockParser();
+    const result = parser.parse(npmLockContent);
+
+    strictEqual(result.dependencies.get('loose-envify')?.resolvedVersion, '1.4.0');
+  });
 });

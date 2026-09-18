@@ -9,9 +9,22 @@ import { whyCommand } from './commands/why.js';
 import { treeCommand } from './commands/tree.js';
 import { compareRnCommand } from './commands/compareRn.js';
 import { upgradeCommand } from './commands/upgrade.js';
+import { printError } from './utils/terminal.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
+
+// Last-resort net for errors that escape every command's own try/catch (e.g. a bug thrown
+// before a command handler runs, or an unhandled rejection from a dangling promise) — without
+// this, such an error surfaces as a raw Node stack trace instead of a clean CLI message.
+process.on('uncaughtException', (error) => {
+  printError(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  printError(`Unexpected error: ${reason instanceof Error ? reason.message : String(reason)}`);
+  process.exit(1);
+});
 
 const program = new Command();
 
@@ -27,12 +40,14 @@ program
   .option('--strict', 'Exit with code 1 if there are errors')
   .option('--cwd <path>', 'Working directory')
   .option('--security', 'Also check for known vulnerabilities via OSV.dev (requires network)')
+  .option('--profile', 'Print a per-step timing breakdown of the scan itself')
   .action(async (options) => {
     await checkCommand({
       json: options.json || false,
       strict: options.strict || false,
       cwd: options.cwd || process.cwd(),
       security: options.security || false,
+      profile: options.profile || false,
     });
   });
 
@@ -56,11 +71,13 @@ program
   .option('--json', 'Output as JSON')
   .option('--cwd <path>', 'Working directory')
   .option('--ipa <path>', 'Path to a built .ipa/.xcarchive to check for dSYM presence')
+  .option('--profile', 'Print a per-step timing breakdown of the scan itself')
   .action(async (options) => {
     await doctorCommand({
       json: options.json || false,
       cwd: options.cwd || process.cwd(),
       ipa: options.ipa || undefined,
+      profile: options.profile || false,
     });
   });
 

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { resolveDependencyRoot } from '../utils/projectRoot.js';
 
 export interface NativeLibraryFile {
   /** Absolute path to the .so file */
@@ -54,7 +55,7 @@ function walk(dir: string, depth: number, results: NativeLibraryFile[]): void {
  * build (CMakeLists.txt/NDK) has no `.so` to inspect until that build runs.
  */
 export function findNativeLibraries(cwd: string, packageName: string): NativeLibraryFile[] {
-  const packageDir = join(cwd, 'node_modules', packageName);
+  const packageDir = join(resolveDependencyRoot(cwd), 'node_modules', packageName);
   if (!existsSync(packageDir)) return [];
 
   const results: NativeLibraryFile[] = [];

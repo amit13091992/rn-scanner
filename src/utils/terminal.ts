@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { computeHealthScore, type HealthScoreInput } from './healthScore.js';
+import type { ProfileEntry } from './profiler.js';
 
 export interface VersionInfo {
   declared?: string;
@@ -35,6 +36,15 @@ export function printError(message: string): void {
 
 export function printInfo(message: string): void {
   console.log(chalk.blue(`ℹ ${message}`));
+}
+
+export function printProfile(entries: ProfileEntry[], totalMs: number): void {
+  printSection('Performance Profile (--profile)');
+  entries.forEach((entry) => {
+    console.log(`  ${entry.durationMs.toFixed(1).padStart(7)}ms  ${entry.label}`);
+  });
+  console.log(chalk.gray(`  ${'─'.repeat(30)}`));
+  console.log(`  ${totalMs.toFixed(1).padStart(7)}ms  total (profiled steps)`);
 }
 
 export function printVersionComparison(

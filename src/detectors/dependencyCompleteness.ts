@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolveDependencyRoot } from '../utils/projectRoot.js';
 
 export interface InstalledManifest {
   version: string;
@@ -37,7 +38,8 @@ function readManifestAt(packageJsonPath: string): InstalledManifest | null {
  * be parsed (caller should surface that as "not checked", not silently skip it).
  */
 export function readInstalledDependencyManifest(cwd: string, packageName: string): InstalledManifest | null {
-  return readManifestAt(join(cwd, 'node_modules', packageName, 'package.json'));
+  const root = resolveDependencyRoot(cwd);
+  return readManifestAt(join(root, 'node_modules', packageName, 'package.json'));
 }
 
 /**
@@ -48,10 +50,11 @@ export function readInstalledDependencyManifest(cwd: string, packageName: string
  * root (node_modules/<dep>).
  */
 export function resolveInstalledVersion(cwd: string, parentName: string, dependencyName: string): string | null {
-  const nested = readManifestAt(join(cwd, 'node_modules', parentName, 'node_modules', dependencyName, 'package.json'));
+  const root = resolveDependencyRoot(cwd);
+  const nested = readManifestAt(join(root, 'node_modules', parentName, 'node_modules', dependencyName, 'package.json'));
   if (nested) return nested.version || null;
 
-  const hoisted = readManifestAt(join(cwd, 'node_modules', dependencyName, 'package.json'));
+  const hoisted = readManifestAt(join(root, 'node_modules', dependencyName, 'package.json'));
   if (hoisted) return hoisted.version || null;
 
   return null;

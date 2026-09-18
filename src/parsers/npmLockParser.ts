@@ -89,10 +89,23 @@ export class NPMLockParser implements ILockfileParser {
     });
   }
 
+  /**
+   * A `packages` key is a full install path (e.g. "node_modules/foo" or, for a nested
+   * dependency, "node_modules/foo/node_modules/bar") — the package name is whatever follows
+   * the *last* "node_modules/" segment, not the path's first segment (which is always the
+   * literal string "node_modules" itself and would otherwise collapse every package in the
+   * lockfile into one map entry).
+   */
   private extractPackageName(path: string): string {
     if (path === '') return '';
 
-    const segments = path.split('/').filter(s => s.length > 0);
+    const idx = path.lastIndexOf('node_modules/');
+    if (idx === -1) return '';
+
+    const segments = path
+      .slice(idx + 'node_modules/'.length)
+      .split('/')
+      .filter(s => s.length > 0);
     if (segments.length === 0) return '';
 
     if (segments[0].startsWith('@')) {
