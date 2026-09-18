@@ -128,7 +128,6 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const expoGoUnknown = expoGoSupport.filter((r) => r.support === 'unknown');
     const dependencyCompleteness = analyzeDependencyCompleteness(cwd, dependencies);
     const requiredMissingDeps = dependencyCompleteness.missing.filter((m) => !m.optional);
-    const optionalMissingDeps = dependencyCompleteness.missing.filter((m) => m.optional);
     const securityResult = options.security
       ? await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities)
       : null;
@@ -212,12 +211,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           });
         }
         if (newArchUntested.length > 0) {
-          newArchUntested.forEach((issue) => {
-            printInfo(`${issue.package}@${issue.version} has no New Architecture compatibility data`);
-            if (issue.notes) {
-              console.log(`  └─ ${issue.notes}`);
-            }
-          });
+          printInfo(`${newArchUntested.length} package(s) have no New Architecture compatibility data — verify manually before upgrading`);
         }
       }
 
@@ -352,21 +346,26 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
 
       if (dependencyCompleteness.missing.length > 0 || dependencyCompleteness.notChecked.length > 0) {
         printSection('Sub-dependency Completeness');
-        requiredMissingDeps.forEach((m) => {
-          const kindLabel = m.kind === 'peerDependency' ? 'peer dependency' : 'dependency';
-          if (m.installedVersion === null) {
-            printError(`${m.parent} requires ${kindLabel} ${m.dependency}@${m.requiredRange}, but it is not installed`);
-          } else {
-            printError(`${m.parent} requires ${kindLabel} ${m.dependency}@${m.requiredRange}, but ${m.installedVersion} is installed`);
-          }
-          console.log(`  └─ Run: ${installCommand(lockfileInfo.manager, m.dependency, m.requiredRange)}`);
-        });
-        optionalMissingDeps.forEach((m) => {
-          printInfo(`${m.parent} has an optional peer dependency ${m.dependency}@${m.requiredRange} that is not satisfied`);
-        });
-        dependencyCompleteness.notChecked.forEach((n) => {
-          printInfo(`${n.parent}: ${n.reason}`);
-        });
+        if (requiredMissingDeps.length > 0) {
+          requiredMissingDeps.forEach((m) => {
+            const kindLabel = m.kind === 'peerDependency' ? 'peer dependency' : 'dependency';
+            if (m.installedVersion === null) {
+              printError(`${m.parent} requires ${kindLabel} ${m.dependency}@${m.requiredRange}, but it is not installed`);
+            } else {
+              printError(`${m.parent} requires ${kindLabel} ${m.dependency}@${m.requiredRange}, but ${m.installedVersion} is installed`);
+            }
+            console.log(`  ├─ Impact: ${m.parent} may fail to build or behave incorrectly at runtime until this is resolved`);
+            console.log(`  ├─ Fix step 1: Run ${installCommand(lockfileInfo.manager, m.dependency, m.requiredRange)}`);
+            console.log('  ├─ Fix step 2: Re-run this scan to confirm the requirement is now satisfied');
+            console.log(`  └─ If the install fails or conflicts, check ${m.parent}'s own peer/version requirements before forcing an override`);
+          });
+        }
+        if (dependencyCompleteness.notChecked.length > 0) {
+          dependencyCompleteness.notChecked.forEach((n) => {
+            printInfo(`${n.parent}: ${n.reason}`);
+            console.log('  └─ Not an error — this package\'s manifest could not be read to verify its sub-dependencies; check it manually if you rely on it heavily');
+          });
+        }
       }
 
       printSection('Summary');
@@ -381,6 +380,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         console.log(`   └─ Peer: ${dependencies.filter(d => d.type === 'peerDependency').length}`);
       }
 
+      console.log(chalk.gray('\nIssue breakdown (see sections above for details on each):'));
       if (versionMismatches.length > 0) {
         console.log(`\n⚡ Version mismatches: ${versionMismatches.length}`);
       }
@@ -435,10 +435,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         if (requiredMissingDeps.length > 0) {
           console.log(`  • ${requiredMissingDeps.length} sub-dependency requirement(s) missing or unsatisfied`);
         }
+        console.log(chalk.gray('\nAddress the items above (each has its own section with fix steps), then re-run this scan to confirm.'));
       } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0 && expoCompat.messages.length === 0 && expoGoUnsupported.length === 0 && dependencyCompleteness.missing.length === 0) {
         console.log(chalk.green.bold('\n✨ All dependencies look good!'));
       } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0 || expoCompat.messages.length > 0 || expoGoUnsupported.length > 0 || dependencyCompleteness.missing.length > 0) {
         console.log(chalk.yellow.bold('\n⚠️  Consider addressing detected issues'));
+        console.log(chalk.gray('None of these are critical, but reviewing them now avoids surprises during your next upgrade.'));
       } else if (notChecked > 0) {
         console.log(chalk.gray.bold('\nℹ No compatibility rules matched any dependencies — nothing was verified'));
       }

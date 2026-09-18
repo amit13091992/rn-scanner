@@ -1,6 +1,6 @@
 # rn-dep-scanner
 
-A React Native project health scanner: dependency compatibility, breaking changes, New Architecture (Fabric/TurboModules) support, Hermes status, native Android/iOS toolchain checks, and upgrade-readiness reports.
+A React Native project health scanner: dependency compatibility, breaking changes, New Architecture (Fabric/TurboModules) support, Expo compatibility, Hermes status, native Android/iOS toolchain checks (including Android 16KB page-size alignment and iOS dSYM presence), dependency completeness, and upgrade-readiness reports.
 
 ## Install
 
@@ -18,15 +18,15 @@ npx rn-dep-scanner
 rn-dep-scanner check [--json] [--strict] [--cwd <path>]
 ```
 
-Analyzes `package.json` + lockfile against React/React Native, flags version mismatches, duplicate/peer-dependency conflicts, deprecated packages, breaking changes, and New Architecture incompatibilities. Reports a 0–100 health score. `--strict` exits 1 on errors.
+Analyzes `package.json` + lockfile against React/React Native, flags version mismatches, duplicate/peer-dependency conflicts, deprecated packages, breaking changes, and New Architecture incompatibilities. Also checks (Expo projects only) whether the Expo SDK matches the installed React Native version and whether each installed package works in Expo Go, plus (all projects) whether each installed package's own sub-dependencies are actually present and version-satisfied. Reports a 0–100 health score. `--strict` exits 1 on errors.
 
 ### `doctor` — environment health
 
 ```bash
-rn-dep-scanner doctor [--json] [--cwd <path>]
+rn-dep-scanner doctor [--json] [--cwd <path>] [--ipa <path>]
 ```
 
-Reports React Native/React version, Hermes status, and native toolchain gaps: Android (JDK, Kotlin, AGP, Gradle, SDK levels, NDK, buildTools) and iOS (Xcode, deployment target, CocoaPods, Ruby, Swift) compared against the detected RN version's requirements.
+Reports React Native/React version, Hermes status, and native toolchain gaps: Android (JDK, Kotlin, AGP, Gradle, SDK levels, NDK, buildTools) and iOS (Xcode, deployment target, CocoaPods, Ruby, Swift) compared against the detected RN version's requirements. Also checks installed native dependencies' prebuilt `.so` libraries for Android 16KB page-size alignment. `--ipa <path>` opts into an informational check of a built `.ipa`/`.xcarchive` for dSYM presence (doesn't affect the READY/WARN/BLOCKED verdict).
 
 ### `compare-rn` — native requirement diff between two RN versions
 
@@ -88,6 +88,9 @@ Every command accepts `--json` for CI/CD integration.
 - `doctor`/`upgrade` native-toolchain checks are static-file-based (parsed config), not live SDK/toolchain installation checks.
 - No monorepo (pnpm-workspace/yarn workspaces) support yet.
 - Bun lockfile parsing is less battle-tested than npm/yarn/pnpm.
+- The Android 16KB page-size check only inspects prebuilt `.so` files already present in `node_modules` — a package that compiles native code during the Android build has nothing to check until that build runs.
+- The iOS `--ipa` check covers dSYM presence for the main app binary only, not embedded frameworks or bitcode.
+- Expo Go per-package support data is a small hand-curated list; most uncurated native modules report "unknown," not a wrong verdict.
 
 ## Development
 
