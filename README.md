@@ -15,18 +15,27 @@ npx rn-dep-scanner
 ### `check` — dependency compatibility (default command)
 
 ```bash
-rn-dep-scanner check [--json] [--strict] [--cwd <path>]
+rn-dep-scanner check [--json] [--strict] [--cwd <path>] [--security] [--profile]
 ```
 
-Analyzes `package.json` + lockfile against React/React Native, flags version mismatches, duplicate/peer-dependency conflicts, deprecated packages, breaking changes, and New Architecture incompatibilities. Also checks (Expo projects only) whether the Expo SDK matches the installed React Native version and whether each installed package works in Expo Go, plus (all projects) whether each installed package's own sub-dependencies are actually present and version-satisfied. Reports a 0–100 health score. `--strict` exits 1 on errors.
+Analyzes `package.json` + lockfile against React/React Native, flags version mismatches, duplicate/peer-dependency conflicts, deprecated packages, breaking changes, and New Architecture incompatibilities. Also checks (Expo projects only) whether the Expo SDK matches the installed React Native version and whether each installed package works in Expo Go, plus (all projects) whether each installed package's own sub-dependencies are actually present and version-satisfied. Reports a 0–100 health score. `--strict` exits 1 on errors (or on a critical/high vulnerability with `--security`). `--security` also checks resolved versions against known vulnerabilities via OSV.dev (requires network). `--profile` prints a per-step timing breakdown of the scan itself.
+
+Per-project rule overrides live in an optional `.rn-dep-scanner.json` at the project root:
+
+```json
+{
+  "ignorePackages": ["some-noisy-package"],
+  "ignoreVulnerabilities": ["GHSA-xxxx-xxxx-xxxx"]
+}
+```
 
 ### `doctor` — environment health
 
 ```bash
-rn-dep-scanner doctor [--json] [--cwd <path>] [--ipa <path>]
+rn-dep-scanner doctor [--json] [--cwd <path>] [--ipa <path>] [--profile]
 ```
 
-Reports React Native/React version, Hermes status, and native toolchain gaps: Android (JDK, Kotlin, AGP, Gradle, SDK levels, NDK, buildTools) and iOS (Xcode, deployment target, CocoaPods, Ruby, Swift) compared against the detected RN version's requirements. Also checks installed native dependencies' prebuilt `.so` libraries for Android 16KB page-size alignment. `--ipa <path>` opts into an informational check of a built `.ipa`/`.xcarchive` for dSYM presence (doesn't affect the READY/WARN/BLOCKED verdict).
+Reports React Native/React version, Hermes status, and native toolchain gaps: Android (JDK, Kotlin, AGP, Gradle, SDK levels, NDK, buildTools) and iOS (Xcode, deployment target, CocoaPods, Ruby, Swift) compared against the detected RN version's requirements. Also checks installed native dependencies' prebuilt `.so` libraries for Android 16KB page-size alignment. `--ipa <path>` opts into an informational check of a built `.ipa`/`.xcarchive` for dSYM presence (doesn't affect the READY/WARN/BLOCKED verdict). `--profile` prints a per-step timing breakdown of the scan itself.
 
 ### `compare-rn` — native requirement diff between two RN versions
 
@@ -84,9 +93,8 @@ Every command accepts `--json` for CI/CD integration.
 
 ## Known Limitations
 
-- Security vulnerability scanning (OSV.dev) was removed as unmaintained dead code — no CVE/GHSA data in output today; reinstating it is future work.
 - `doctor`/`upgrade` native-toolchain checks are static-file-based (parsed config), not live SDK/toolchain installation checks.
-- No monorepo (pnpm-workspace/yarn workspaces) support yet.
+- Monorepo support (npm/yarn/pnpm/bun workspaces) resolves the correct lockfile and `node_modules` root when run from a workspace package, but does not yet aggregate or cross-check multiple workspace packages in one run.
 - Bun lockfile parsing is less battle-tested than npm/yarn/pnpm.
 - The Android 16KB page-size check only inspects prebuilt `.so` files already present in `node_modules` — a package that compiles native code during the Android build has nothing to check until that build runs.
 - The iOS `--ipa` check covers dSYM presence for the main app binary only, not embedded frameworks or bitcode.
