@@ -3,15 +3,17 @@ import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { loadConfig } from '../utils/config.js';
 import { evaluatePolicy } from '../analyzers/policy.js';
 import { printHeader, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface PolicyOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
 export async function policyCommand(options: PolicyOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   let violationCount = 0;
 
   try {
@@ -23,7 +25,7 @@ export async function policyCommand(options: PolicyOptions = {}): Promise<void> 
     violationCount = result.violations.length;
 
     if (jsonMode) {
-      console.log(JSON.stringify({ ...result, configWarnings: warnings }, null, 2));
+      emitStructuredOutput({ ...result, configWarnings: warnings }, 'Policy Report', options);
     } else {
       printHeader('Policy');
       warnings.forEach((w) => printWarning(w));
@@ -39,7 +41,7 @@ export async function policyCommand(options: PolicyOptions = {}): Promise<void> 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Policy Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

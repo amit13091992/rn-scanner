@@ -3,14 +3,17 @@ import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { analyzeImpact } from '../analyzers/impact.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+
 export interface ImpactOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
 export async function impactCommand(packageName: string, targetVersion: string, options: ImpactOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const packageJson = await readPackageJson(cwd);
@@ -19,7 +22,7 @@ export async function impactCommand(packageName: string, targetVersion: string, 
     const result = analyzeImpact(cwd, dependencies, packageName, targetVersion, graph);
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Impact Report', options);
       return;
     }
 
@@ -63,7 +66,7 @@ export async function impactCommand(packageName: string, targetVersion: string, 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Impact Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

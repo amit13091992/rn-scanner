@@ -5,9 +5,11 @@ import type {
 } from '../types/reactNativeRequirements.js';
 import { printHeader, printSection, printError, printInfo } from '../utils/terminal.js';
 import chalk from 'chalk';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface CompareRnOptions {
   json?: boolean;
+  html?: HtmlOption;
 }
 
 interface FieldDiff {
@@ -68,7 +70,7 @@ export async function compareRnCommand(
   toVersion: string,
   options: CompareRnOptions = {}
 ): Promise<void> {
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   const fromReq = getReactNativeRequirements(fromVersion);
   const toReq = getReactNativeRequirements(toVersion);
@@ -77,7 +79,7 @@ export async function compareRnCommand(
     const missing = !fromReq ? fromVersion : toVersion;
     const message = `No native requirement baseline found for React Native version "${missing}"`;
     if (jsonMode) {
-      console.log(JSON.stringify({ error: message }, null, 2));
+      emitStructuredOutput({ error: message }, 'RN Version Comparison', options);
     } else {
       printError(message);
     }
@@ -94,18 +96,10 @@ export async function compareRnCommand(
   };
 
   if (jsonMode) {
-    console.log(
-      JSON.stringify(
-        {
-          from: fromReq.version,
-          to: toReq.version,
-          node: nodeDiff,
-          android: androidDiffs,
-          ios: iosDiffs,
-        },
-        null,
-        2
-      )
+    emitStructuredOutput(
+      { from: fromReq.version, to: toReq.version, node: nodeDiff, android: androidDiffs, ios: iosDiffs },
+      'RN Version Comparison',
+      options
     );
     return;
   }

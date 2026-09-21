@@ -4,9 +4,11 @@ import { analyzeIosEnvironment } from '../analyzers/iosEnvironment.js';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import { verdictFromRequirements, combineVerdicts } from '../utils/verdict.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface NativeOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
@@ -31,7 +33,7 @@ function printRequirements(requirements: EnvironmentRequirement[]): void {
  */
 export async function nativeCommand(options: NativeOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   let versionMissing = false;
 
   try {
@@ -40,7 +42,7 @@ export async function nativeCommand(options: NativeOptions = {}): Promise<void> 
     if (!rnInfo.version) {
       const error = 'React Native version not detected — cannot check native toolchain requirements';
       if (jsonMode) {
-        console.log(JSON.stringify({ error }, null, 2));
+        emitStructuredOutput({ error }, 'Native Environment Report', options);
       } else {
         printError(error);
       }
@@ -51,7 +53,7 @@ export async function nativeCommand(options: NativeOptions = {}): Promise<void> 
       const verdict = combineVerdicts([verdictFromRequirements(android), verdictFromRequirements(ios)]);
 
       if (jsonMode) {
-        console.log(JSON.stringify({ reactNative: rnInfo.version, android, ios, verdict }, null, 2));
+        emitStructuredOutput({ reactNative: rnInfo.version, android, ios, verdict }, 'Native Environment Report', options);
       } else {
         printHeader('Native Toolchain');
         printInfo(`React Native: ${rnInfo.version}`);
@@ -71,7 +73,7 @@ export async function nativeCommand(options: NativeOptions = {}): Promise<void> 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Native Environment Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

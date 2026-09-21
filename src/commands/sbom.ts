@@ -2,9 +2,11 @@ import { readPackageJson } from '../utils/packageJson.js';
 import { buildDependencyGraph, collectAllPackageVersions } from '../utils/dependencyGraph.js';
 import { readInstalledPackageLicense } from '../detectors/license.js';
 import { printError } from '../utils/terminal.js';
+import { formatJsonAsHtml, emitHtml, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface SbomOptions {
   cwd?: string;
+  html?: HtmlOption;
 }
 
 interface CycloneDxComponent {
@@ -33,7 +35,11 @@ export async function sbomCommand(options: SbomOptions = {}): Promise<void> {
     const graph = await buildDependencyGraph(cwd);
 
     if (!graph) {
-      console.log(JSON.stringify({ error: 'No project or lockfile found' }, null, 2));
+      if (options.html) {
+        emitHtml(formatJsonAsHtml('SBOM', { error: 'No project or lockfile found' }), typeof options.html === 'string' ? options.html : undefined);
+      } else {
+        console.log(JSON.stringify({ error: 'No project or lockfile found' }, null, 2));
+      }
       noGraphFound = true;
     } else {
       const packages = collectAllPackageVersions(graph);
@@ -63,7 +69,11 @@ export async function sbomCommand(options: SbomOptions = {}): Promise<void> {
         components,
       };
 
-      console.log(JSON.stringify(sbom, null, 2));
+      if (options.html) {
+        emitHtml(formatJsonAsHtml('SBOM', sbom), typeof options.html === 'string' ? options.html : undefined);
+      } else {
+        console.log(JSON.stringify(sbom, null, 2));
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

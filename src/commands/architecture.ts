@@ -3,8 +3,11 @@ import { readPackageJson, getAllDependenciesWithResolution } from '../utils/pack
 import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
 import { printHeader, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+
 export interface ArchitectureOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
@@ -16,7 +19,7 @@ export interface ArchitectureOptions {
  */
 export async function architectureCommand(options: ArchitectureOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const rnInfo = await detectReactNativeVersions(cwd);
@@ -25,7 +28,7 @@ export async function architectureCommand(options: ArchitectureOptions = {}): Pr
     const result = analyzeNewArchitecture(dependencies, rnInfo.version);
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'New Architecture Report', options);
       return;
     }
 
@@ -66,7 +69,7 @@ export async function architectureCommand(options: ArchitectureOptions = {}): Pr
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'New Architecture Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

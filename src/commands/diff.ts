@@ -1,9 +1,11 @@
 import { buildDependencyGraph, collectAllPackageVersions } from '../utils/dependencyGraph.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface DiffOptions {
   json?: boolean;
+  html?: HtmlOption;
   from: string;
   to: string;
 }
@@ -23,7 +25,7 @@ interface ChangedPackage {
  * lockfile-parsing pipeline as-is instead of a second, ad hoc parser.
  */
 export async function diffCommand(options: DiffOptions): Promise<void> {
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   // See securityCommand for why `process.exit` is deferred until after the try/catch.
   let graphMissing = false;
 
@@ -36,7 +38,7 @@ export async function diffCommand(options: DiffOptions): Promise<void> {
     if (!fromGraph || !toGraph) {
       const error = `No project or lockfile found at ${!fromGraph ? options.from : options.to}`;
       if (jsonMode) {
-        console.log(JSON.stringify({ error }, null, 2));
+        emitStructuredOutput({ error }, 'Dependency Diff', options);
       } else {
         printError(error);
       }
@@ -75,7 +77,7 @@ export async function diffCommand(options: DiffOptions): Promise<void> {
     const result = { added, removed, changed, security: securityScan };
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Dependency Diff', options);
       return;
     }
 
@@ -113,7 +115,7 @@ export async function diffCommand(options: DiffOptions): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Dependency Diff', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

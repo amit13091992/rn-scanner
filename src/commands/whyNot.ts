@@ -2,14 +2,17 @@ import { readPackageJson, getAllDependenciesWithResolution } from '../utils/pack
 import { analyzeWhyNot } from '../analyzers/whyNot.js';
 import { printHeader, printSection, printSuccess, printError, printInfo } from '../utils/terminal.js';
 
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+
 export interface WhyNotOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
 export async function whyNotCommand(packageName: string, targetVersion: string, options: WhyNotOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const packageJson = await readPackageJson(cwd);
@@ -17,7 +20,7 @@ export async function whyNotCommand(packageName: string, targetVersion: string, 
     const result = analyzeWhyNot(cwd, dependencies, packageName, targetVersion);
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Why Not Report', options);
       return;
     }
 
@@ -47,7 +50,7 @@ export async function whyNotCommand(packageName: string, targetVersion: string, 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Why Not Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

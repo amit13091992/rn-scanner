@@ -32,6 +32,7 @@ import {
 } from '../utils/versionDetection.js';
 import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
 import { computeHealthScore } from '../utils/healthScore.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 function installCommand(manager: string, packageName: string, range: string): string {
   const spec = `${packageName}@${range}`;
@@ -49,6 +50,7 @@ function installCommand(manager: string, packageName: string, range: string): st
 
 export interface CheckOptions {
   json?: boolean;
+  html?: HtmlOption;
   strict?: boolean;
   cwd?: string;
   /** Security scanning is on by default; pass false (--no-security) to skip the OSV.dev network call. */
@@ -61,7 +63,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
   const profiler = new Profiler(!!options.profile);
 
   try {
-    const jsonMode = !!options.json;
+    const jsonMode = !!options.json || !!options.html;
 
     if (!jsonMode) {
       printHeader('RN Deps Scanner');
@@ -549,7 +551,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           : {}),
         ...(options.profile ? { profile: { steps: profiler.report(), totalMs: profiler.totalMs() } } : {}),
       };
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'RN Deps Scanner Report', options);
     }
 
     const criticalOrHighVulns = securityResult
@@ -560,8 +562,8 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    if (options.json) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+    if (options.json || options.html) {
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'RN Deps Scanner Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

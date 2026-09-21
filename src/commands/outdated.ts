@@ -8,10 +8,12 @@ import {
   printWarning,
   printError,
 } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface OutdatedOptions {
   cwd?: string;
   json?: boolean;
+  html?: HtmlOption;
   majorOnly?: boolean;
 }
 
@@ -34,7 +36,7 @@ function compareVersions(current: string, latest: string): 'major' | 'minor' | '
 
 export async function outdatedCommand(options: OutdatedOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     if (!jsonMode) {
@@ -80,7 +82,7 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
         },
         packages: outdated,
       };
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Outdated Dependencies', options);
       return;
     }
 
@@ -115,7 +117,7 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Error: ${message}` }, 'Outdated Dependencies', options);
     } else {
       printError(`Error: ${message}`);
     }

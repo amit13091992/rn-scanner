@@ -3,9 +3,11 @@ import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { loadConfig } from '../utils/config.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface SecurityOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
@@ -25,7 +27,7 @@ const SEVERITY_ORDER = ['critical', 'high', 'moderate', 'low', 'unknown'];
  */
 export async function securityCommand(options: SecurityOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   // Set inside the try block and read after it, so a non-zero exit is decided outside the
   // try/catch — calling `process.exit` from within `try` would otherwise be caught by this
   // function's own `catch` (a real concern in tests, where `process.exit` is stubbed to throw)
@@ -51,15 +53,10 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
     const result = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
 
     if (jsonMode) {
-      console.log(
-        JSON.stringify(
-          {
-            ...result,
-            hierarchyComplete: graph?.hierarchyComplete ?? false,
-          },
-          null,
-          2
-        )
+      emitStructuredOutput(
+        { ...result, hierarchyComplete: graph?.hierarchyComplete ?? false },
+        'Security Scan',
+        options
       );
     } else {
       if (!result.scanned) {
@@ -108,7 +105,7 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Security Scan', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

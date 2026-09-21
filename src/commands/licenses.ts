@@ -4,14 +4,17 @@ import { analyzeLicenses } from '../analyzers/licenses.js';
 import { loadConfig } from '../utils/config.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+
 export interface LicensesOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
 export async function licensesCommand(options: LicensesOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   // Read after the try/catch (see securityCommand for the same pattern and rationale) so a
   // stubbed `process.exit` in tests isn't caught by this function's own `catch` and
   // misreported as a fatal error after the real result has already been printed.
@@ -26,7 +29,7 @@ export async function licensesCommand(options: LicensesOptions = {}): Promise<vo
     deniedFound = result.denied.length > 0;
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'License Report', options);
     } else {
       printHeader('Licenses');
       printSection('By License');
@@ -51,7 +54,7 @@ export async function licensesCommand(options: LicensesOptions = {}): Promise<vo
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'License Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

@@ -1,6 +1,6 @@
 # rn-dep-scanner
 
-A React Native project health scanner: dependency compatibility, breaking changes, New Architecture (Fabric/TurboModules) support, Expo compatibility, Hermes status, native Android/iOS toolchain checks (including Android 16KB page-size alignment and iOS dSYM presence), dependency completeness, and upgrade-readiness reports.
+A React Native project health scanner: dependency compatibility, breaking changes, native toolchain/environment checks, security scanning, and supply-chain reporting — see [Commands](#commands) below for the full list.
 
 ## Install
 
@@ -65,8 +65,8 @@ Combines breaking changes, New Architecture requirements, and Android/iOS toolch
 ### `why` / `tree` — dependency graph
 
 ```bash
-rn-dep-scanner why <package> [--json]
-rn-dep-scanner tree [package] [--duplicates] [--json]
+rn-dep-scanner why <package> [--json] [--cwd <path>]
+rn-dep-scanner tree [package] [--duplicates] [--json] [--cwd <path>]
 ```
 
 `why` traces every install path and version a package resolves to; `tree` prints the full (or subtree) dependency tree. Full transitive hierarchy is supported for npm; yarn/pnpm/bun show direct dependencies only today (a warning is printed when this applies).
@@ -74,7 +74,7 @@ rn-dep-scanner tree [package] [--duplicates] [--json]
 ### `security` — vulnerability scan
 
 ```bash
-rn-dep-scanner security [--json]
+rn-dep-scanner security [--json] [--cwd <path>]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (same data `check` reports by default), with the dependency path to each vulnerable package. Exits 1 on any critical/high finding — useful for CI without running the full `check`.
@@ -82,8 +82,8 @@ Standalone OSV.dev scan across direct **and transitive** dependencies (same data
 ### `why-not` / `impact` — upgrade planning
 
 ```bash
-rn-dep-scanner why-not <package> <version> [--json]
-rn-dep-scanner impact <package> <version> [--json]
+rn-dep-scanner why-not <package> <version> [--json] [--cwd <path>]
+rn-dep-scanner impact <package> <version> [--json] [--cwd <path>]
 ```
 
 `why-not` explains which installed package's declared peer/dependency range blocks a specific version from being installed. `impact` goes further: breaking changes at that version, the same peer/version conflicts, and which other packages depend on this one (worth re-testing after upgrading), plus plain-language recommended actions.
@@ -91,7 +91,7 @@ rn-dep-scanner impact <package> <version> [--json]
 ### `unused` — dependencies with no detected import
 
 ```bash
-rn-dep-scanner unused [--json]
+rn-dep-scanner unused [--json] [--cwd <path>]
 ```
 
 Heuristic (regex-based `require`/`import` scan of project source) flagging declared dependencies never referenced — a starting point for manual review, not a "safe to delete" guarantee. Known tooling-only packages (ESLint/Babel/TypeScript/Jest/Metro plugins, etc.) are excluded automatically.
@@ -99,8 +99,8 @@ Heuristic (regex-based `require`/`import` scan of project source) flagging decla
 ### `licenses` / `sbom` — license & supply-chain reporting
 
 ```bash
-rn-dep-scanner licenses [--json]
-rn-dep-scanner sbom
+rn-dep-scanner licenses [--json] [--cwd <path>]
+rn-dep-scanner sbom [--cwd <path>]
 ```
 
 `licenses` reports each package's declared license across the full transitive tree, optionally flagging a `licenseDenylist` from `.rn-dep-scanner.json` (exits 1 on a match). `sbom` exports a CycloneDX 1.5 JSON Software Bill of Materials to stdout.
@@ -116,7 +116,7 @@ Compares two project directories' dependency graphs (added/removed/changed packa
 ### `legacy-apis` — removed React Native API usage
 
 ```bash
-rn-dep-scanner legacy-apis [--json]
+rn-dep-scanner legacy-apis [--json] [--cwd <path>]
 ```
 
 Detects source imports of core React Native APIs that were removed and split into community packages (`WebView`, `AsyncStorage`, `Clipboard`, `NetInfo`, `ListView`, and more — see `data/legacyApis.ts`), reporting each affected file with the suggested replacement package.
@@ -124,7 +124,7 @@ Detects source imports of core React Native APIs that were removed and split int
 ### `bundle` — dependency install size
 
 ```bash
-rn-dep-scanner bundle [--json]
+rn-dep-scanner bundle [--json] [--cwd <path>]
 ```
 
 Reports each direct dependency's on-disk install size, largest first — a quick "what's heavy" signal, not a real Metro bundle analysis.
@@ -132,7 +132,7 @@ Reports each direct dependency's on-disk install size, largest first — a quick
 ### `policy` — org-wide rules
 
 ```bash
-rn-dep-scanner policy [--json]
+rn-dep-scanner policy [--json] [--cwd <path>]
 ```
 
 Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and `maxVulnerabilitySeverity` fields (see below). Exits 1 on any violation.
@@ -147,8 +147,8 @@ Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and `max
 ### `baseline` — track only new findings
 
 ```bash
-rn-dep-scanner baseline --create   # snapshot current security findings
-rn-dep-scanner baseline            # report only findings new since the snapshot
+rn-dep-scanner baseline --create [--cwd <path>]   # snapshot current security findings
+rn-dep-scanner baseline [--json] [--cwd <path>]   # report only findings new since the snapshot
 ```
 
 Useful for adopting the tool on a large existing project without a wall of pre-existing issues blocking CI on day one. Scoped to security vulnerabilities.
@@ -156,7 +156,7 @@ Useful for adopting the tool on a large existing project without a wall of pre-e
 ### `report` — Markdown/HTML dependency report
 
 ```bash
-rn-dep-scanner report [--format md|html] [--out <path>]
+rn-dep-scanner report [--format md|html] [--out <path>] [--cwd <path>]
 ```
 
 Renders a condensed health-score/compatibility/security report — to stdout by default, or a file with `--out`.
@@ -164,7 +164,7 @@ Renders a condensed health-score/compatibility/security report — to stdout by 
 ### `watch` — continuous scanning
 
 ```bash
-rn-dep-scanner watch [--interval <seconds>]
+rn-dep-scanner watch [--interval <seconds>] [--json] [--cwd <path>]
 ```
 
 Runs `check` on a repeating interval (default 300s) until interrupted — for a long-running terminal/CI job.
@@ -172,8 +172,8 @@ Runs `check` on a repeating interval (default 300s) until interrupted — for a 
 ### `architecture` / `native` — standalone slices
 
 ```bash
-rn-dep-scanner architecture [--json]
-rn-dep-scanner native [--json]
+rn-dep-scanner architecture [--json] [--cwd <path>]
+rn-dep-scanner native [--json] [--cwd <path>]
 ```
 
 Expose just the New Architecture compatibility check or the Android/iOS native toolchain check, without the rest of `check`/`doctor`.
@@ -181,7 +181,7 @@ Expose just the New Architecture compatibility check or the Android/iOS native t
 ### `16kb` — Android page-size alignment (standalone)
 
 ```bash
-rn-dep-scanner 16kb [--json]
+rn-dep-scanner 16kb [--json] [--cwd <path>]
 ```
 
 Same 16KB page-size alignment check `doctor` reports, on its own.
@@ -189,7 +189,7 @@ Same 16KB page-size alignment check `doctor` reports, on its own.
 ### `graph` — raw dependency graph export
 
 ```bash
-rn-dep-scanner graph [--json] [--dot]
+rn-dep-scanner graph [--json] [--dot] [--cwd <path>]
 ```
 
 Exposes the dependency graph as data rather than a rendered tree — `--json` for every node's id/name/version/parents/children, `--dot` for a Graphviz digraph (`rn-dep-scanner graph --dot | dot -Tpng -o graph.png`).
@@ -197,7 +197,7 @@ Exposes the dependency graph as data rather than a rendered tree — `--json` fo
 ### `outdated` — available updates
 
 ```bash
-rn-dep-scanner outdated [--major-only] [--json]
+rn-dep-scanner outdated [--major-only] [--json] [--cwd <path>]
 ```
 
 Lists updates grouped by major/minor/patch severity.
@@ -217,7 +217,7 @@ Health Score: 0/100
   └─ ? Not Checked:   2
 ```
 
-Every command accepts `--json` for CI/CD integration.
+Every command accepts `--json` for CI/CD integration. Every command that has `--json` (`watch` and `report` included; `sbom` too, despite having no `--json` of its own) also accepts `--html [path]`, rendering the same result as a minimal HTML page — printed to stdout if no path is given, or written to that file (`rn-dep-scanner check --html report.html`).
 
 ## Resolved vs Requested Versions
 

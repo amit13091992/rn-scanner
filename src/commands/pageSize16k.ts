@@ -1,9 +1,11 @@
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { analyzePageSize } from '../analyzers/pageSize.js';
 import { printHeader, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface PageSize16kOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
@@ -15,7 +17,7 @@ export interface PageSize16kOptions {
  */
 export async function pageSize16kCommand(options: PageSize16kOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const packageJson = await readPackageJson(cwd);
@@ -23,7 +25,7 @@ export async function pageSize16kCommand(options: PageSize16kOptions = {}): Prom
     const pageSize = analyzePageSize(cwd, dependencies);
 
     if (jsonMode) {
-      console.log(JSON.stringify(pageSize, null, 2));
+      emitStructuredOutput(pageSize, '16KB Page-Size Alignment', options);
       return;
     }
 
@@ -49,7 +51,7 @@ export async function pageSize16kCommand(options: PageSize16kOptions = {}): Prom
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, '16KB Page-Size Alignment', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

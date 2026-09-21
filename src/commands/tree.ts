@@ -1,9 +1,11 @@
 import { buildDependencyGraph, findDuplicateVersionPaths } from '../utils/dependencyGraph.js';
 import type { DependencyGraph } from '../types/dependencyGraph.js';
 import { printHeader, printError, printWarning, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface TreeOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
   duplicatesOnly?: boolean; // corresponds to a future `--duplicates` CLI flag
 }
@@ -145,14 +147,14 @@ function findFirstNodeIdForPackage(graph: DependencyGraph, packageName: string):
 
 export async function treeCommand(packageName?: string, options: TreeOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const graph = await buildDependencyGraph(cwd);
 
     if (!graph) {
       if (jsonMode) {
-        console.log(JSON.stringify({ error: 'No project or lockfile found' }, null, 2));
+        emitStructuredOutput({ error: 'No project or lockfile found' }, 'Dependency Tree', options);
       } else {
         printError('No project or lockfile found');
       }
@@ -164,7 +166,7 @@ export async function treeCommand(packageName?: string, options: TreeOptions = {
       const found = findFirstNodeIdForPackage(graph, packageName);
       if (!found) {
         if (jsonMode) {
-          console.log(JSON.stringify({ error: `"${packageName}" not found in dependency graph` }, null, 2));
+          emitStructuredOutput({ error: `"${packageName}" not found in dependency graph` }, 'Dependency Tree', options);
         } else {
           printInfo(`"${packageName}" was not found in the dependency graph.`);
         }
@@ -181,16 +183,10 @@ export async function treeCommand(packageName?: string, options: TreeOptions = {
     if (jsonMode) {
       const startDepth = packageName ? 0 : 0;
       const tree = buildJsonSubtree(graph, rootId, startDepth, new Set(), new Set(), duplicateNames);
-      console.log(
-        JSON.stringify(
-          {
-            manager: graph.manager,
-            hierarchyComplete: graph.hierarchyComplete,
-            tree,
-          },
-          null,
-          2
-        )
+      emitStructuredOutput(
+        { manager: graph.manager, hierarchyComplete: graph.hierarchyComplete, tree },
+        'Dependency Tree',
+        options
       );
       return;
     }
@@ -207,7 +203,7 @@ export async function treeCommand(packageName?: string, options: TreeOptions = {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Error: ${message}` }, 'Dependency Tree', options);
     } else {
       printError(`Error: ${message}`);
     }

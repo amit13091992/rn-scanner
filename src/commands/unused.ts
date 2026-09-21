@@ -2,14 +2,17 @@ import { readPackageJson, getAllDependenciesWithResolution } from '../utils/pack
 import { analyzeUnusedDependencies } from '../analyzers/unusedDependencies.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+
 export interface UnusedOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
 export async function unusedCommand(options: UnusedOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     if (!jsonMode) {
@@ -21,7 +24,7 @@ export async function unusedCommand(options: UnusedOptions = {}): Promise<void> 
     const result = analyzeUnusedDependencies(cwd, dependencies);
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Unused Dependencies', options);
       return;
     }
 
@@ -43,7 +46,7 @@ export async function unusedCommand(options: UnusedOptions = {}): Promise<void> 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Unused Dependencies', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

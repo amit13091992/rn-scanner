@@ -1,20 +1,23 @@
 import { analyzeLegacyApiUsage } from '../analyzers/legacyApiUsage.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+
 export interface LegacyApisOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
 export async function legacyApisCommand(options: LegacyApisOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const result = analyzeLegacyApiUsage(cwd);
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Legacy API Usage', options);
       return;
     }
 
@@ -39,7 +42,7 @@ export async function legacyApisCommand(options: LegacyApisOptions = {}): Promis
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Legacy API Usage', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

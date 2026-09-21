@@ -2,8 +2,11 @@ import { readPackageJson, getAllDependenciesWithResolution } from '../utils/pack
 import { analyzeBundleSize } from '../analyzers/bundleSize.js';
 import { printHeader, printSection, printError, printInfo } from '../utils/terminal.js';
 
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+
 export interface BundleOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
@@ -15,7 +18,7 @@ function formatBytes(bytes: number): string {
 
 export async function bundleCommand(options: BundleOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const packageJson = await readPackageJson(cwd);
@@ -23,7 +26,7 @@ export async function bundleCommand(options: BundleOptions = {}): Promise<void> 
     const result = analyzeBundleSize(cwd, dependencies);
 
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Dependency Size', options);
       return;
     }
 
@@ -39,7 +42,7 @@ export async function bundleCommand(options: BundleOptions = {}): Promise<void> 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Dependency Size', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

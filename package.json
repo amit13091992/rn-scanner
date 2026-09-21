@@ -1,7 +1,7 @@
 {
   "name": "rn-dep-scanner",
   "version": "1.3.13",
-  "description": "React Native dependency scanner - compatibility, breaking changes & security vulnerabilities",
+  "description": "React Native project health CLI: dependency compatibility, breaking changes, New Architecture/Expo support, native Android/iOS toolchain checks, transitive OSV.dev security scanning, license/SBOM/policy reporting, and dependency graph tooling",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -21,7 +21,17 @@
     "compatibility",
     "npm",
     "cli",
-    "mobile"
+    "mobile",
+    "security",
+    "vulnerability-scanner",
+    "sbom",
+    "license-checker",
+    "new-architecture",
+    "expo",
+    "hermes",
+    "doctor",
+    "upgrade",
+    "typescript"
   ],
   "author": "amit13091992@gmail.com",
   "license": "MIT",

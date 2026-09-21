@@ -18,9 +18,11 @@ import {
   printError,
   printInfo,
 } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface UpgradeOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
@@ -32,7 +34,7 @@ function envIssues(requirements: EnvironmentRequirement[]): EnvironmentRequireme
 
 export async function upgradeCommand(toVersion: string, options: UpgradeOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const packageJson = readPackageJson(cwd);
@@ -121,7 +123,7 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
         })),
         duplicateDependencies: duplicates,
       };
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Upgrade Readiness', options);
       return;
     }
 
@@ -221,7 +223,7 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Upgrade Readiness', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

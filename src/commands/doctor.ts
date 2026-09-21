@@ -20,6 +20,7 @@ import {
   printError,
   printProfile,
 } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 function printEnvironmentRequirements(requirements: EnvironmentRequirement[]): void {
   for (const req of requirements) {
@@ -43,6 +44,7 @@ function printEnvironmentRequirements(requirements: EnvironmentRequirement[]): v
 
 export interface DoctorOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
   ipa?: string;
   profile?: boolean;
@@ -50,7 +52,7 @@ export interface DoctorOptions {
 
 export async function doctorCommand(options: DoctorOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   const profiler = new Profiler(!!options.profile);
 
   try {
@@ -113,7 +115,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
         ...(iosPackage ? { iosPackage } : {}),
         ...(options.profile ? { profile: { steps: profiler.report(), totalMs: profiler.totalMs() } } : {}),
       };
-      console.log(JSON.stringify(result, null, 2));
+      emitStructuredOutput(result, 'Doctor Report', options);
       return;
     }
 
@@ -188,7 +190,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Doctor Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

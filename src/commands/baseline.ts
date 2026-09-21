@@ -6,9 +6,11 @@ import { loadConfig } from '../utils/config.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { createBaseline, diffAgainstBaseline, BASELINE_FILENAME, type BaselineFile } from '../utils/baseline.js';
 import { printHeader, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface BaselineOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
   create?: boolean;
 }
@@ -21,7 +23,7 @@ export interface BaselineOptions {
  */
 export async function baselineCommand(options: BaselineOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   let newFindingsCount = 0;
   let baselineMissing = false;
 
@@ -37,7 +39,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
       const baseline = createBaseline(securityResult);
       writeFileSync(baselinePath, JSON.stringify(baseline, null, 2));
       if (jsonMode) {
-        console.log(JSON.stringify({ created: true, path: BASELINE_FILENAME, entries: baseline.entries.length }, null, 2));
+        emitStructuredOutput({ created: true, path: BASELINE_FILENAME, entries: baseline.entries.length }, 'Baseline', options);
       } else {
         printHeader('Baseline');
         printSuccess(`Created ${BASELINE_FILENAME} with ${baseline.entries.length} known finding(s)`);
@@ -48,7 +50,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
     if (!existsSync(baselinePath)) {
       const error = `No baseline found at ${BASELINE_FILENAME} — run \`rn-dep-scanner baseline --create\` first`;
       if (jsonMode) {
-        console.log(JSON.stringify({ error }, null, 2));
+        emitStructuredOutput({ error }, 'Baseline', options);
       } else {
         printError(error);
       }
@@ -59,7 +61,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
       newFindingsCount = newFindings.results.reduce((sum, r) => sum + r.vulnerabilities.length, 0);
 
       if (jsonMode) {
-        console.log(JSON.stringify({ baseline: { createdAt: baseline.createdAt, entries: baseline.entries.length }, newFindings }, null, 2));
+        emitStructuredOutput({ baseline: { createdAt: baseline.createdAt, entries: baseline.entries.length }, newFindings }, 'Baseline', options);
       } else {
         printHeader('Baseline Check');
         printInfo(`Baseline created ${baseline.createdAt} (${baseline.entries.length} known finding(s))`);
@@ -79,7 +81,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Baseline', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

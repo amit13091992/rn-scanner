@@ -1,21 +1,23 @@
 import { buildDependencyGraph, findPathsGroupedByVersion } from '../utils/dependencyGraph.js';
 import { printHeader, printSection, printError, printWarning, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface WhyOptions {
   json?: boolean;
+  html?: HtmlOption;
   cwd?: string;
 }
 
 export async function whyCommand(packageName: string, options: WhyOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
 
   try {
     const graph = await buildDependencyGraph(cwd);
 
     if (!graph) {
       if (jsonMode) {
-        console.log(JSON.stringify({ error: 'No project or lockfile found' }, null, 2));
+        emitStructuredOutput({ error: 'No project or lockfile found' }, 'Why', options);
       } else {
         printError('No project or lockfile found');
       }
@@ -26,7 +28,7 @@ export async function whyCommand(packageName: string, options: WhyOptions = {}):
 
     if (occurrences.length === 0) {
       if (jsonMode) {
-        console.log(JSON.stringify({ package: packageName, occurrences: [] }, null, 2));
+        emitStructuredOutput({ package: packageName, occurrences: [] }, 'Why', options);
       } else {
         if (!graph.hierarchyComplete) {
           printWarning(
@@ -39,7 +41,7 @@ export async function whyCommand(packageName: string, options: WhyOptions = {}):
     }
 
     if (jsonMode) {
-      console.log(JSON.stringify({ package: packageName, occurrences }, null, 2));
+      emitStructuredOutput({ package: packageName, occurrences }, 'Why', options);
       return;
     }
 
@@ -62,7 +64,7 @@ export async function whyCommand(packageName: string, options: WhyOptions = {}):
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Error: ${message}` }, 'Why', options);
     } else {
       printError(`Error: ${message}`);
     }

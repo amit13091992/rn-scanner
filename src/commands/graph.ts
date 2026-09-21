@@ -1,8 +1,10 @@
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { printHeader, printSuccess, printError, printInfo } from '../utils/terminal.js';
+import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 export interface GraphOptions {
   json?: boolean;
+  html?: HtmlOption;
   /** Render as Graphviz DOT instead of the default summary/JSON — for piping into `dot`/other graph tooling. */
   dot?: boolean;
   cwd?: string;
@@ -17,7 +19,7 @@ export interface GraphOptions {
  */
 export async function graphCommand(options: GraphOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
-  const jsonMode = !!options.json;
+  const jsonMode = !!options.json || !!options.html;
   let graphMissing = false;
 
   try {
@@ -26,7 +28,7 @@ export async function graphCommand(options: GraphOptions = {}): Promise<void> {
     if (!graph) {
       const error = 'No project or lockfile found';
       if (jsonMode) {
-        console.log(JSON.stringify({ error }, null, 2));
+        emitStructuredOutput({ error }, 'Dependency Graph', options);
       } else {
         printError(error);
       }
@@ -56,7 +58,7 @@ export async function graphCommand(options: GraphOptions = {}): Promise<void> {
       }));
 
       if (jsonMode) {
-        console.log(JSON.stringify({ manager: graph.manager, hierarchyComplete: graph.hierarchyComplete, root: graph.root, nodeCount: nodes.length, nodes }, null, 2));
+        emitStructuredOutput({ manager: graph.manager, hierarchyComplete: graph.hierarchyComplete, root: graph.root, nodeCount: nodes.length, nodes }, 'Dependency Graph', options);
       } else {
         printHeader('Dependency Graph');
         printInfo(`Package manager: ${graph.manager}`);
@@ -71,7 +73,7 @@ export async function graphCommand(options: GraphOptions = {}): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
-      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'Dependency Graph', options);
     } else {
       printError(`Fatal error: ${message}`);
     }
