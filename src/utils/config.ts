@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import type { RnDepScannerConfig } from '../types/config.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity'];
+const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
 export interface LoadConfigResult {
   config: RnDepScannerConfig;
@@ -83,6 +84,22 @@ export function loadConfig(cwd: string): LoadConfigResult {
       config.licenseDenylist = record.licenseDenylist;
     } else {
       warnings.push(`${CONFIG_FILENAME}: "licenseDenylist" must be an array of strings, got ${describeType(record.licenseDenylist)} — ignoring this field`);
+    }
+  }
+
+  if ('bannedPackages' in record) {
+    if (isStringArray(record.bannedPackages)) {
+      config.bannedPackages = record.bannedPackages;
+    } else {
+      warnings.push(`${CONFIG_FILENAME}: "bannedPackages" must be an array of strings, got ${describeType(record.bannedPackages)} — ignoring this field`);
+    }
+  }
+
+  if ('maxVulnerabilitySeverity' in record) {
+    if (typeof record.maxVulnerabilitySeverity === 'string' && VALID_SEVERITIES.has(record.maxVulnerabilitySeverity)) {
+      config.maxVulnerabilitySeverity = record.maxVulnerabilitySeverity as RnDepScannerConfig['maxVulnerabilitySeverity'];
+    } else {
+      warnings.push(`${CONFIG_FILENAME}: "maxVulnerabilitySeverity" must be one of critical/high/moderate/low, got ${describeType(record.maxVulnerabilitySeverity)} — ignoring this field`);
     }
   }
 

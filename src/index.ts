@@ -15,6 +15,14 @@ import { sbomCommand } from './commands/sbom.js';
 import { diffCommand } from './commands/diff.js';
 import { legacyApisCommand } from './commands/legacyApis.js';
 import { bundleCommand } from './commands/bundle.js';
+import { policyCommand } from './commands/policy.js';
+import { baselineCommand } from './commands/baseline.js';
+import { reportCommand } from './commands/report.js';
+import { watchCommand } from './commands/watch.js';
+import { architectureCommand } from './commands/architecture.js';
+import { nativeCommand } from './commands/native.js';
+import { pageSize16kCommand } from './commands/pageSize16k.js';
+import { graphCommand } from './commands/graph.js';
 import { treeCommand } from './commands/tree.js';
 import { compareRnCommand } from './commands/compareRn.js';
 import { upgradeCommand } from './commands/upgrade.js';
@@ -206,6 +214,110 @@ program
   .action(async (options) => {
     await bundleCommand({
       json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('policy')
+  .description('Evaluate the project against .rn-dep-scanner.json org-policy rules (bannedPackages, licenseDenylist, maxVulnerabilitySeverity)')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await policyCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('baseline')
+  .description('Snapshot current security findings, or report only findings new since the last snapshot')
+  .option('--create', 'Create/overwrite the baseline snapshot instead of checking against it')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await baselineCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+      create: options.create || false,
+    });
+  });
+
+program
+  .command('report')
+  .description('Render a dependency-health report (Markdown or HTML)')
+  .option('--format <format>', 'Output format: md or html', 'md')
+  .option('--out <path>', 'Write to a file instead of stdout')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await reportCommand({
+      cwd: options.cwd || process.cwd(),
+      format: options.format === 'html' ? 'html' : 'md',
+      out: options.out,
+    });
+  });
+
+program
+  .command('watch')
+  .description('Run check repeatedly on an interval until interrupted')
+  .option('--interval <seconds>', 'Seconds between scans (default 300)', (v) => parseInt(v, 10))
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await watchCommand({
+      cwd: options.cwd || process.cwd(),
+      json: options.json || false,
+      interval: options.interval,
+    });
+  });
+
+program
+  .command('architecture')
+  .description('Standalone New Architecture (Fabric/TurboModules) compatibility report')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await architectureCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('native')
+  .description('Standalone Android + iOS native toolchain report')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await nativeCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('16kb')
+  .description('Standalone Android 16KB page-size alignment report')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await pageSize16kCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('graph')
+  .description('Export the raw dependency graph (JSON or Graphviz DOT)')
+  .option('--json', 'Output as JSON')
+  .option('--dot', 'Output as Graphviz DOT')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await graphCommand({
+      json: options.json || false,
+      dot: options.dot || false,
       cwd: options.cwd || process.cwd(),
     });
   });

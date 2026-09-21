@@ -1,0 +1,75 @@
+import { detectReactNativeVersions } from '../detectors/reactNative.js';
+import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
+import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
+import { printHeader, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+
+export interface ArchitectureOptions {
+  json?: boolean;
+  cwd?: string;
+}
+
+/**
+ * Standalone New Architecture (Fabric/TurboModules) compatibility report — the same
+ * `analyzeNewArchitecture` data `check` already surfaces, exposed on its own for a user who
+ * only wants this slice (e.g. before starting a New Architecture migration) without running
+ * the full dependency-compatibility scan.
+ */
+export async function architectureCommand(options: ArchitectureOptions = {}): Promise<void> {
+  const cwd = options.cwd || process.cwd();
+  const jsonMode = !!options.json;
+
+  try {
+    const rnInfo = await detectReactNativeVersions(cwd);
+    const packageJson = await readPackageJson(cwd);
+    const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
+    const result = analyzeNewArchitecture(dependencies, rnInfo.version);
+
+    if (jsonMode) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    printHeader('New Architecture (Fabric/TurboModules)');
+
+    if (!rnInfo.version) {
+      printWarning('React Native version not detected — cannot determine New Architecture status');
+      return;
+    }
+
+    if (result.status.isBridgeRemoved) {
+      printInfo(`React Native ${rnInfo.version} has removed the legacy bridge — New Architecture is mandatory`);
+    } else if (result.status.isNewArchDefault) {
+      printInfo(`React Native ${rnInfo.version} defaults to the New Architecture`);
+    } else {
+      printInfo(`React Native ${rnInfo.version} does not default to the New Architecture`);
+    }
+
+    const issues = result.results.filter((r) => r.support === 'unsupported' || r.support === 'partial');
+    const untested = result.results.filter((r) => r.support === 'unknown');
+
+    if (issues.length === 0) {
+      printSuccess('No known New Architecture incompatibilities in checked dependencies');
+    } else {
+      issues.forEach((issue) => {
+        if (issue.support === 'unsupported') {
+          printError(`${issue.package}@${issue.version} does not support the New Architecture`);
+        } else {
+          printWarning(`${issue.package}@${issue.version} has partial New Architecture support`);
+        }
+        if (issue.notes) console.log(`  └─ ${issue.notes}`);
+      });
+    }
+
+    if (untested.length > 0) {
+      printInfo(`${untested.length} package(s) have no New Architecture compatibility data — verify manually before upgrading`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    if (jsonMode) {
+      console.log(JSON.stringify({ error: `Fatal error: ${message}` }, null, 2));
+    } else {
+      printError(`Fatal error: ${message}`);
+    }
+    process.exit(1);
+  }
+}

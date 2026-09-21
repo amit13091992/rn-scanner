@@ -129,6 +129,71 @@ rn-dep-scanner bundle [--json]
 
 Reports each direct dependency's on-disk install size, largest first — a quick "what's heavy" signal, not a real Metro bundle analysis.
 
+### `policy` — org-wide rules
+
+```bash
+rn-dep-scanner policy [--json]
+```
+
+Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and `maxVulnerabilitySeverity` fields (see below). Exits 1 on any violation.
+
+```json
+{
+  "bannedPackages": ["some-vendor-package"],
+  "maxVulnerabilitySeverity": "high"
+}
+```
+
+### `baseline` — track only new findings
+
+```bash
+rn-dep-scanner baseline --create   # snapshot current security findings
+rn-dep-scanner baseline            # report only findings new since the snapshot
+```
+
+Useful for adopting the tool on a large existing project without a wall of pre-existing issues blocking CI on day one. Scoped to security vulnerabilities.
+
+### `report` — Markdown/HTML dependency report
+
+```bash
+rn-dep-scanner report [--format md|html] [--out <path>]
+```
+
+Renders a condensed health-score/compatibility/security report — to stdout by default, or a file with `--out`.
+
+### `watch` — continuous scanning
+
+```bash
+rn-dep-scanner watch [--interval <seconds>]
+```
+
+Runs `check` on a repeating interval (default 300s) until interrupted — for a long-running terminal/CI job.
+
+### `architecture` / `native` — standalone slices
+
+```bash
+rn-dep-scanner architecture [--json]
+rn-dep-scanner native [--json]
+```
+
+Expose just the New Architecture compatibility check or the Android/iOS native toolchain check, without the rest of `check`/`doctor`.
+
+### `16kb` — Android page-size alignment (standalone)
+
+```bash
+rn-dep-scanner 16kb [--json]
+```
+
+Same 16KB page-size alignment check `doctor` reports, on its own.
+
+### `graph` — raw dependency graph export
+
+```bash
+rn-dep-scanner graph [--json] [--dot]
+```
+
+Exposes the dependency graph as data rather than a rendered tree — `--json` for every node's id/name/version/parents/children, `--dot` for a Graphviz digraph (`rn-dep-scanner graph --dot | dot -Tpng -o graph.png`).
+
 ### `outdated` — available updates
 
 ```bash

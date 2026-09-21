@@ -1,0 +1,8 @@
+{
+  "name": "page-size-fixture",
+  "dependencies": {
+    "native-aligned-pkg": "1.0.0",
+    "native-unaligned-pkg": "1.0.0",
+    "js-only-pkg": "1.0.0"
+  }
+}
