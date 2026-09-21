@@ -113,6 +113,22 @@ rn-dep-scanner diff --from <dir> --to <dir> [--json]
 
 Compares two project directories' dependency graphs (added/removed/changed packages), then runs a security scan against just what changed — catches a PR that quietly introduces a vulnerable package.
 
+### `legacy-apis` — removed React Native API usage
+
+```bash
+rn-dep-scanner legacy-apis [--json]
+```
+
+Detects source imports of core React Native APIs that were removed and split into community packages (`WebView`, `AsyncStorage`, `Clipboard`, `NetInfo`, `ListView`, and more — see `data/legacyApis.ts`), reporting each affected file with the suggested replacement package.
+
+### `bundle` — dependency install size
+
+```bash
+rn-dep-scanner bundle [--json]
+```
+
+Reports each direct dependency's on-disk install size, largest first — a quick "what's heavy" signal, not a real Metro bundle analysis.
+
 ### `outdated` — available updates
 
 ```bash

@@ -13,6 +13,8 @@ import { impactCommand } from './commands/impact.js';
 import { licensesCommand } from './commands/licenses.js';
 import { sbomCommand } from './commands/sbom.js';
 import { diffCommand } from './commands/diff.js';
+import { legacyApisCommand } from './commands/legacyApis.js';
+import { bundleCommand } from './commands/bundle.js';
 import { treeCommand } from './commands/tree.js';
 import { compareRnCommand } from './commands/compareRn.js';
 import { upgradeCommand } from './commands/upgrade.js';
@@ -181,6 +183,30 @@ program
       json: options.json || false,
       from: options.from,
       to: options.to,
+    });
+  });
+
+program
+  .command('legacy-apis')
+  .description('Detect usage of legacy/removed React Native core APIs, with suggested replacements')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await legacyApisCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('bundle')
+  .description('Report each direct dependency\'s on-disk install size, largest first (a bundle-weight approximation)')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await bundleCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
     });
   });
 
