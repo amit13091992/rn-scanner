@@ -1,6 +1,8 @@
 import { queryVulnerabilities } from '../services/osvClient.js';
 import type { DependencyInfo } from '../types/dependency.js';
-import type { SecurityScanResult, VulnerabilitySeverity } from '../types/vulnerability.js';
+import type { DependencyGraph } from '../types/dependencyGraph.js';
+import { collectAllPackageVersions } from '../utils/dependencyGraph.js';
+import type { PackageVulnerabilityResult, SecurityScanResult, VulnerabilitySeverity } from '../types/vulnerability.js';
 
 export interface SecurityAnalysisResult extends SecurityScanResult {
   summary: Record<VulnerabilitySeverity, number>;
@@ -31,26 +33,49 @@ function resolveQueryableVersion(dep: DependencyInfo): string | null {
  * lockfile actually installed) over `requestedVersion` (the package.json range) — matching
  * this project's established convention that security-relevant checks operate on what's
  * actually installed, not what's declared.
+ *
+ * When `graph` is supplied (from `buildDependencyGraph`), every unique (name, version) pair
+ * reachable anywhere in the dependency tree is scanned — not just `package.json`'s direct
+ * dependencies — so a vulnerable package several levels deep (e.g. `eslint > file-entry-cache >
+ * flat-cache > keyv`) is still caught. For npm this is a complete transitive scan
+ * (`graph.hierarchyComplete === true`); for yarn/pnpm/bun the graph is direct-dependency-only
+ * today, so coverage there is unchanged from a `dependencies`-only scan. When no graph is
+ * available at all, falls back to `dependencies` alone with `direct: true`/`paths: []` — never
+ * silently claiming "not direct" or "no path" as if that were confirmed.
  */
 export async function analyzeSecurityVulnerabilities(
   dependencies: DependencyInfo[],
-  ignoreVulnerabilityIds: string[] = []
+  ignoreVulnerabilityIds: string[] = [],
+  graph?: DependencyGraph | null
 ): Promise<SecurityAnalysisResult> {
-  const packages = dependencies
-    .map((d) => ({ name: d.name, version: resolveQueryableVersion(d) }))
-    .filter((p): p is { name: string; version: string } => p.version !== null);
+  const graphVersions = graph ? collectAllPackageVersions(graph) : null;
+
+  const packages = graphVersions
+    ? graphVersions.map((v) => ({ name: v.name, version: v.version }))
+    : dependencies
+        .map((d) => ({ name: d.name, version: resolveQueryableVersion(d) }))
+        .filter((p): p is { name: string; version: string } => p.version !== null);
 
   const rawScan = await queryVulnerabilities(packages);
+
+  const metaByKey = new Map(
+    (graphVersions ?? []).map((v) => [`${v.name}@${v.version}`, { direct: v.direct, paths: v.paths }])
+  );
+  const withGraphMeta: PackageVulnerabilityResult[] = rawScan.results.map((r) => {
+    const meta = metaByKey.get(`${r.package}@${r.version}`);
+    return { ...r, direct: meta?.direct ?? true, paths: meta?.paths ?? [] };
+  });
+  const scanWithMeta: SecurityScanResult = { ...rawScan, results: withGraphMeta };
 
   // Accepted-risk suppression (.rn-dep-scanner.json ignoreVulnerabilities): drop specific
   // advisory IDs, and drop a package entirely if that removes its last remaining vulnerability
   // — never invent a "clean" scan when the scan itself failed (scanned: false is untouched).
   const ignoreSet = new Set(ignoreVulnerabilityIds);
   const scan: SecurityScanResult = ignoreSet.size === 0
-    ? rawScan
+    ? scanWithMeta
     : {
-        ...rawScan,
-        results: rawScan.results
+        ...scanWithMeta,
+        results: scanWithMeta.results
           .map((r) => ({ ...r, vulnerabilities: r.vulnerabilities.filter((v) => !ignoreSet.has(v.id)) }))
           .filter((r) => r.vulnerabilities.length > 0),
       };

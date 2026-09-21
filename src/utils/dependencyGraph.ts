@@ -779,6 +779,62 @@ export function findPathsToPackage(graph: DependencyGraph, packageName: string):
   return results;
 }
 
+export interface PackageOccurrence {
+  version: string;
+  paths: string[][];
+}
+
+/**
+ * Groups every root-to-node path to `packageName` by the resolved version at each path's
+ * terminal node (a package can be installed at multiple versions at once). Shared by `why`
+ * and the security analyzer so both report identical paths for the same graph.
+ */
+export function findPathsGroupedByVersion(graph: DependencyGraph, packageName: string): PackageOccurrence[] {
+  const byVersion = new Map<string, string[][]>();
+
+  walkAllPaths(graph, (node, _nodeId, path) => {
+    if (node.name !== packageName) return;
+    const version = node.version || 'unknown';
+    if (!byVersion.has(version)) byVersion.set(version, []);
+    byVersion.get(version)!.push(path);
+  });
+
+  return Array.from(byVersion.entries()).map(([version, paths]) => ({ version, paths }));
+}
+
+export interface GraphPackageVersion {
+  name: string;
+  version: string;
+  /** true if this (name, version) is reachable via at least one direct (root-to-node length-1) path */
+  direct: boolean;
+  paths: string[][];
+}
+
+/**
+ * Collects every unique (name, version) pair reachable in the graph, each with every path
+ * that reaches it. Used by the security analyzer to scan the full transitive tree (not just
+ * `package.json`'s direct dependencies) — e.g. a vulnerable package three levels deep like
+ * `eslint > file-entry-cache > flat-cache > keyv` is invisible to a direct-only scan.
+ */
+export function collectAllPackageVersions(graph: DependencyGraph): GraphPackageVersion[] {
+  const byKey = new Map<string, GraphPackageVersion>();
+
+  walkAllPaths(graph, (node, _nodeId, path) => {
+    if (!node.version) return;
+    const key = `${node.name}@${node.version}`;
+    const direct = path.length === 1;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.paths.push(path);
+      if (direct) existing.direct = true;
+    } else {
+      byKey.set(key, { name: node.name, version: node.version, direct, paths: [path] });
+    }
+  });
+
+  return Array.from(byKey.values());
+}
+
 export function findDuplicateVersionPaths(
   graph: DependencyGraph
 ): Map<string, Array<{ version: string; paths: string[][] }>> {

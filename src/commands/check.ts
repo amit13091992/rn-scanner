@@ -9,6 +9,7 @@ import { analyzeExpoCompatibility } from '../analyzers/expoCompatibility.js';
 import { analyzeExpoGoSupport } from '../analyzers/expoGoSupport.js';
 import { analyzeDependencyCompleteness } from '../analyzers/dependencyCompleteness.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
+import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { loadConfig } from '../utils/config.js';
 import { Profiler } from '../utils/profiler.js';
 import {
@@ -50,6 +51,7 @@ export interface CheckOptions {
   json?: boolean;
   strict?: boolean;
   cwd?: string;
+  /** Security scanning is on by default; pass false (--no-security) to skip the OSV.dev network call. */
   security?: boolean;
   profile?: boolean;
 }
@@ -144,10 +146,12 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       analyzeDependencyCompleteness(cwd, dependencies)
     );
     const requiredMissingDeps = dependencyCompleteness.missing.filter((m) => !m.optional);
-    const securityResult = options.security
-      ? await profiler.time('analyzeSecurityVulnerabilities (OSV.dev network call)', () =>
-          analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities)
-        )
+    const securityEnabled = options.security !== false;
+    const securityResult = securityEnabled
+      ? await profiler.time('analyzeSecurityVulnerabilities (OSV.dev network call)', async () => {
+          const graph = await buildDependencyGraph(cwd);
+          return analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+        })
       : null;
     const newArchIssues = newArch.results.filter(
       (r) => r.support === 'unsupported' || r.support === 'partial'
@@ -233,8 +237,10 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         }
       }
 
-      if (expoCompat.isExpoProject) {
-        printSection('Expo Compatibility');
+      printSection('Expo Compatibility');
+      if (!expoCompat.isExpoProject) {
+        printInfo('Not an Expo project — no `expo` dependency or app.json/app.config.json Expo config detected');
+      } else {
         if (expoCompat.sdkVersion !== null) {
           printInfo(`Expo SDK: ${expoCompat.sdkVersion}`);
         }
@@ -249,63 +255,68 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
             }
           });
         }
-
-        if (expoGoSupport.length > 0) {
-          printSection('Expo Go Support');
-          if (expoGoUnsupported.length === 0 && expoGoUnknown.length === 0) {
-            printSuccess('All checked dependencies work in Expo Go');
-          } else {
-            expoGoUnsupported.forEach((issue) => {
-              printError(`${issue.package}@${issue.version} is not supported in Expo Go`);
-              if (issue.reason) {
-                console.log(`  └─ ${issue.reason}`);
-              }
-            });
-            expoGoUnknown.forEach((issue) => {
-              printInfo(`${issue.package}@${issue.version} has no Expo Go compatibility data`);
-              if (issue.notes) {
-                console.log(`  └─ ${issue.notes}`);
-              }
-            });
-          }
-        }
       }
 
-      if (options.security) {
-        printSection('Security Vulnerabilities');
-        if (!securityResult || !securityResult.scanned) {
-          printWarning(`Could not run security scan: ${securityResult?.error ?? 'unknown error'}`);
-        } else if (securityResult.results.length === 0) {
-          printSuccess('No known vulnerabilities found (via OSV.dev)');
-        } else {
-          const severityIcon: Record<string, string> = {
-            critical: '🔴 CRITICAL',
-            high: '🟠 HIGH',
-            moderate: '🟡 MODERATE',
-            low: 'ℹ️  LOW',
-            unknown: 'ℹ️  UNKNOWN',
-          };
-          const severityOrder = ['critical', 'high', 'moderate', 'low', 'unknown'];
-          securityResult.results
-            .slice()
-            .sort((a, b) => {
-              const aMax = Math.min(...a.vulnerabilities.map((v) => severityOrder.indexOf(v.severity)));
-              const bMax = Math.min(...b.vulnerabilities.map((v) => severityOrder.indexOf(v.severity)));
-              return aMax - bMax;
-            })
-            .forEach((pkgResult) => {
-              pkgResult.vulnerabilities.forEach((vuln) => {
-                console.log(`\n${severityIcon[vuln.severity] ?? vuln.severity}  ${pkgResult.package}@${pkgResult.version}`);
-                console.log(`  ├─ ${vuln.id}: ${vuln.summary}`);
-                if (vuln.fixedVersion) {
-                  console.log(`  ├─ Fixed in: ${vuln.fixedVersion}`);
-                }
-                if (vuln.references.length > 0) {
-                  console.log(`  └─ ${vuln.references[0]}`);
-                }
-              });
+      printSection('Expo Go Support');
+      if (!expoCompat.isExpoProject) {
+        printInfo('Not an Expo project — Expo Go support is not applicable');
+      } else if (expoGoSupport.length === 0) {
+        printInfo('No installed packages matched the Expo Go compatibility data or the native-module heuristic');
+      } else if (expoGoUnsupported.length === 0 && expoGoUnknown.length === 0) {
+        printSuccess('All checked dependencies work in Expo Go');
+      } else {
+        expoGoUnsupported.forEach((issue) => {
+          printError(`${issue.package}@${issue.version} is not supported in Expo Go`);
+          if (issue.reason) {
+            console.log(`  └─ ${issue.reason}`);
+          }
+        });
+        expoGoUnknown.forEach((issue) => {
+          printInfo(`${issue.package}@${issue.version} has no Expo Go compatibility data`);
+          if (issue.notes) {
+            console.log(`  └─ ${issue.notes}`);
+          }
+        });
+      }
+
+      printSection('Security Vulnerabilities');
+      if (!securityEnabled) {
+        printInfo('Skipped (--no-security passed)');
+      } else if (!securityResult || !securityResult.scanned) {
+        printWarning(`Could not run security scan: ${securityResult?.error ?? 'unknown error'}`);
+      } else if (securityResult.results.length === 0) {
+        printSuccess('No known vulnerabilities found (via OSV.dev, including transitive dependencies)');
+      } else {
+        const severityIcon: Record<string, string> = {
+          critical: '🔴 CRITICAL',
+          high: '🟠 HIGH',
+          moderate: '🟡 MODERATE',
+          low: 'ℹ️  LOW',
+          unknown: 'ℹ️  UNKNOWN',
+        };
+        const severityOrder = ['critical', 'high', 'moderate', 'low', 'unknown'];
+        securityResult.results
+          .slice()
+          .sort((a, b) => {
+            const aMax = Math.min(...a.vulnerabilities.map((v) => severityOrder.indexOf(v.severity)));
+            const bMax = Math.min(...b.vulnerabilities.map((v) => severityOrder.indexOf(v.severity)));
+            return aMax - bMax;
+          })
+          .forEach((pkgResult) => {
+            pkgResult.vulnerabilities.forEach((vuln) => {
+              console.log(`\n${severityIcon[vuln.severity] ?? vuln.severity}  ${pkgResult.package}@${pkgResult.version}${pkgResult.direct ? '' : ' (transitive)'}`);
+              console.log(`  ├─ ${vuln.id}: ${vuln.summary}`);
+              if (vuln.fixedVersion) {
+                console.log(`  ├─ Fixed in: ${vuln.fixedVersion}`);
+              }
+              if (pkgResult.paths.length > 0) {
+                console.log(`  ├─ Path: your-app → ${pkgResult.paths[0].join(' → ')}`);
+              }
+              if (vuln.references.length > 0) {
+                console.log(`  └─ ${vuln.references[0]}`);
+              }
             });
-        }
+          });
       }
 
       if (errors > 0) {
@@ -518,7 +529,14 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         expo: expoCompat,
         ...(expoCompat.isExpoProject ? { expoGoSupport } : {}),
         dependencyCompleteness,
-        ...(options.security ? { security: securityResult } : {}),
+        security: securityEnabled
+          ? securityResult
+          : {
+              scanned: false,
+              error: 'Skipped (--no-security passed)',
+              results: [],
+              summary: { critical: 0, high: 0, moderate: 0, low: 0, unknown: 0 },
+            },
         ...(ignoredPackages.length > 0 || configWarnings.length > 0
           ? {
               config: {

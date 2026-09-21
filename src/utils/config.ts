@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { RnDepScannerConfig } from '../types/config.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist'];
 
 export interface LoadConfigResult {
   config: RnDepScannerConfig;
@@ -75,6 +75,14 @@ export function loadConfig(cwd: string): LoadConfigResult {
       config.ignoreVulnerabilities = record.ignoreVulnerabilities;
     } else {
       warnings.push(`${CONFIG_FILENAME}: "ignoreVulnerabilities" must be an array of strings, got ${describeType(record.ignoreVulnerabilities)} — ignoring this field`);
+    }
+  }
+
+  if ('licenseDenylist' in record) {
+    if (isStringArray(record.licenseDenylist)) {
+      config.licenseDenylist = record.licenseDenylist;
+    } else {
+      warnings.push(`${CONFIG_FILENAME}: "licenseDenylist" must be an array of strings, got ${describeType(record.licenseDenylist)} — ignoring this field`);
     }
   }
 

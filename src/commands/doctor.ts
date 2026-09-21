@@ -154,18 +154,20 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     printEnvironmentRequirements(iosEnvironment);
 
     const pageSizeChecked = pageSize.filter((r) => r.status !== 'not-checked');
-    if (pageSizeChecked.length > 0) {
-      printSection('16KB Page-Size Alignment (Android)');
-      if (pageSizeUnaligned.length === 0) {
-        printSuccess(`All ${pageSizeChecked.length} checked native librar${pageSizeChecked.length === 1 ? 'y is' : 'ies are'} 16KB-page-size aligned`);
-      } else {
-        pageSizeUnaligned.forEach((r) => {
-          printWarning(`${r.package}@${r.version} ships a native library that is not 16KB-page-size aligned`);
-          r.libraries
-            .filter((l) => !l.is16kAligned)
-            .forEach((l) => console.log(`  └─ ${l.path} (${l.abi}, max PT_LOAD align: ${l.maxLoadAlign} bytes)`));
-        });
-      }
+    printSection('16KB Page-Size Alignment (Android)');
+    if (pageSize.length === 0) {
+      printInfo('No dependencies to check — no readable package.json, or no dependencies declared');
+    } else if (pageSizeChecked.length === 0) {
+      printInfo(`No prebuilt native (.so) libraries found across ${pageSize.length} dependenc${pageSize.length === 1 ? 'y' : 'ies'} — either no native modules are installed, or their .so files haven't been generated yet (some compile from source during the Android build)`);
+    } else if (pageSizeUnaligned.length === 0) {
+      printSuccess(`All ${pageSizeChecked.length} checked native librar${pageSizeChecked.length === 1 ? 'y is' : 'ies are'} 16KB-page-size aligned`);
+    } else {
+      pageSizeUnaligned.forEach((r) => {
+        printWarning(`${r.package}@${r.version} ships a native library that is not 16KB-page-size aligned`);
+        r.libraries
+          .filter((l) => !l.is16kAligned)
+          .forEach((l) => console.log(`  └─ ${l.path} (${l.abi}, max PT_LOAD align: ${l.maxLoadAlign} bytes)`));
+      });
     }
 
     if (iosPackage) {

@@ -4,10 +4,18 @@ A React Native project health scanner: dependency compatibility, breaking change
 
 ## Install
 
+`rn-dep-scanner` is a dev-only CLI tool — it's never imported by your app's runtime code, so it
+should never end up in your production dependency tree. A global install (or `npx`) sidesteps
+the question entirely; if you do install it locally into a project, use `--save-dev`/`-D` so it
+lands in `devDependencies`, not `dependencies` (npm has no way for a package to force this
+itself — it's determined entirely by the flag you pass to `npm install`).
+
 ```bash
 npm install -g rn-dep-scanner
 # or
 npx rn-dep-scanner
+# or, to pin a version per-project instead of installing globally:
+npm install --save-dev rn-dep-scanner
 ```
 
 ## Commands
@@ -15,17 +23,18 @@ npx rn-dep-scanner
 ### `check` — dependency compatibility (default command)
 
 ```bash
-rn-dep-scanner check [--json] [--strict] [--cwd <path>] [--security] [--profile]
+rn-dep-scanner check [--json] [--strict] [--cwd <path>] [--no-security] [--profile]
 ```
 
-Analyzes `package.json` + lockfile against React/React Native, flags version mismatches, duplicate/peer-dependency conflicts, deprecated packages, breaking changes, and New Architecture incompatibilities. Also checks (Expo projects only) whether the Expo SDK matches the installed React Native version and whether each installed package works in Expo Go, plus (all projects) whether each installed package's own sub-dependencies are actually present and version-satisfied. Reports a 0–100 health score. `--strict` exits 1 on errors (or on a critical/high vulnerability with `--security`). `--security` also checks resolved versions against known vulnerabilities via OSV.dev (requires network). `--profile` prints a per-step timing breakdown of the scan itself.
+Analyzes `package.json` + lockfile against React/React Native, flags version mismatches, duplicate/peer-dependency conflicts, deprecated packages, breaking changes, and New Architecture incompatibilities. Also checks (Expo projects only) whether the Expo SDK matches the installed React Native version and whether each installed package works in Expo Go, plus (all projects) whether each installed package's own sub-dependencies are actually present and version-satisfied. Reports a 0–100 health score. `--strict` exits 1 on errors (or on a critical/high vulnerability). Checks resolved versions — direct **and transitive** — against known vulnerabilities via OSV.dev by default (requires network; pass `--no-security` to skip). `--profile` prints a per-step timing breakdown of the scan itself.
 
 Per-project rule overrides live in an optional `.rn-dep-scanner.json` at the project root:
 
 ```json
 {
   "ignorePackages": ["some-noisy-package"],
-  "ignoreVulnerabilities": ["GHSA-xxxx-xxxx-xxxx"]
+  "ignoreVulnerabilities": ["GHSA-xxxx-xxxx-xxxx"],
+  "licenseDenylist": ["GPL-3.0"]
 }
 ```
 
@@ -60,7 +69,49 @@ rn-dep-scanner why <package> [--json]
 rn-dep-scanner tree [package] [--duplicates] [--json]
 ```
 
-`why` traces every install path and version a package resolves to; `tree` prints the full (or subtree) dependency tree. Full transitive hierarchy is supported for npm, yarn, pnpm, and bun.
+`why` traces every install path and version a package resolves to; `tree` prints the full (or subtree) dependency tree. Full transitive hierarchy is supported for npm; yarn/pnpm/bun show direct dependencies only today (a warning is printed when this applies).
+
+### `security` — vulnerability scan
+
+```bash
+rn-dep-scanner security [--json]
+```
+
+Standalone OSV.dev scan across direct **and transitive** dependencies (same data `check` reports by default), with the dependency path to each vulnerable package. Exits 1 on any critical/high finding — useful for CI without running the full `check`.
+
+### `why-not` / `impact` — upgrade planning
+
+```bash
+rn-dep-scanner why-not <package> <version> [--json]
+rn-dep-scanner impact <package> <version> [--json]
+```
+
+`why-not` explains which installed package's declared peer/dependency range blocks a specific version from being installed. `impact` goes further: breaking changes at that version, the same peer/version conflicts, and which other packages depend on this one (worth re-testing after upgrading), plus plain-language recommended actions.
+
+### `unused` — dependencies with no detected import
+
+```bash
+rn-dep-scanner unused [--json]
+```
+
+Heuristic (regex-based `require`/`import` scan of project source) flagging declared dependencies never referenced — a starting point for manual review, not a "safe to delete" guarantee. Known tooling-only packages (ESLint/Babel/TypeScript/Jest/Metro plugins, etc.) are excluded automatically.
+
+### `licenses` / `sbom` — license & supply-chain reporting
+
+```bash
+rn-dep-scanner licenses [--json]
+rn-dep-scanner sbom
+```
+
+`licenses` reports each package's declared license across the full transitive tree, optionally flagging a `licenseDenylist` from `.rn-dep-scanner.json` (exits 1 on a match). `sbom` exports a CycloneDX 1.5 JSON Software Bill of Materials to stdout.
+
+### `diff` — dependency changes between two project states
+
+```bash
+rn-dep-scanner diff --from <dir> --to <dir> [--json]
+```
+
+Compares two project directories' dependency graphs (added/removed/changed packages), then runs a security scan against just what changed — catches a PR that quietly introduces a vulnerable package.
 
 ### `outdated` — available updates
 

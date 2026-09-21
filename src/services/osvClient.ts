@@ -1,5 +1,5 @@
 import { coerce, gt as semverGt, gte as semverGte, lt as semverLt } from 'semver';
-import type { PackageVulnerabilityResult, SecurityScanResult, VulnerabilityInfo, VulnerabilitySeverity } from '../types/vulnerability.js';
+import type { RawPackageVulnerabilityResult, RawSecurityScanResult, VulnerabilityInfo, VulnerabilitySeverity } from '../types/vulnerability.js';
 
 const OSV_BATCH_URL = 'https://api.osv.dev/v1/querybatch';
 const OSV_VULN_URL = 'https://api.osv.dev/v1/vulns/';
@@ -145,7 +145,7 @@ export function parseOsvRecord(record: OsvVulnRecord, packageName: string, insta
  */
 export async function queryVulnerabilities(
   packages: { name: string; version: string }[]
-): Promise<SecurityScanResult> {
+): Promise<RawSecurityScanResult> {
   const queryable = packages.filter((p) => !!p.version);
   if (queryable.length === 0) {
     return { scanned: true, results: [] };
@@ -186,7 +186,7 @@ export async function queryVulnerabilities(
     Array.from({ length: Math.min(DETAIL_CONCURRENCY, idQueue.length) }, detailWorker)
   );
 
-  const results: PackageVulnerabilityResult[] = [];
+  const results: RawPackageVulnerabilityResult[] = [];
   queryable.forEach((pkg, index) => {
     const ids = idsByPackageIndex[index] ?? [];
     const vulnerabilities = ids

@@ -6,6 +6,13 @@ import { checkCommand } from './commands/check.js';
 import { outdatedCommand } from './commands/outdated.js';
 import { doctorCommand } from './commands/doctor.js';
 import { whyCommand } from './commands/why.js';
+import { securityCommand } from './commands/security.js';
+import { unusedCommand } from './commands/unused.js';
+import { whyNotCommand } from './commands/whyNot.js';
+import { impactCommand } from './commands/impact.js';
+import { licensesCommand } from './commands/licenses.js';
+import { sbomCommand } from './commands/sbom.js';
+import { diffCommand } from './commands/diff.js';
 import { treeCommand } from './commands/tree.js';
 import { compareRnCommand } from './commands/compareRn.js';
 import { upgradeCommand } from './commands/upgrade.js';
@@ -39,14 +46,14 @@ program
   .option('--json', 'Output as JSON')
   .option('--strict', 'Exit with code 1 if there are errors')
   .option('--cwd <path>', 'Working directory')
-  .option('--security', 'Also check for known vulnerabilities via OSV.dev (requires network)')
+  .option('--no-security', 'Skip checking for known vulnerabilities via OSV.dev (enabled by default, requires network)')
   .option('--profile', 'Print a per-step timing breakdown of the scan itself')
   .action(async (options) => {
     await checkCommand({
       json: options.json || false,
       strict: options.strict || false,
       cwd: options.cwd || process.cwd(),
-      security: options.security || false,
+      security: options.security !== false,
       profile: options.profile || false,
     });
   });
@@ -90,6 +97,90 @@ program
     await whyCommand(packageName, {
       json: options.json || false,
       cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('security')
+  .description('Scan direct and transitive dependencies for known vulnerabilities (via OSV.dev)')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await securityCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('why-not <package> <version>')
+  .description('Explain why a specific version of a package cannot be installed (peer/version conflicts)')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (packageName, version, options) => {
+    await whyNotCommand(packageName, version, {
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('impact <package> <version>')
+  .description('Assess the impact of upgrading a package to a specific version')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (packageName, version, options) => {
+    await impactCommand(packageName, version, {
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('unused')
+  .description('List declared dependencies with no detected import in project source (heuristic)')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await unusedCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('licenses')
+  .description('Report each dependency\'s license, optionally flagging a configured denylist')
+  .option('--json', 'Output as JSON')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await licensesCommand({
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('sbom')
+  .description('Export a CycloneDX Software Bill of Materials (JSON) to stdout')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await sbomCommand({
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('diff')
+  .description('Compare dependency graphs between two project directories, flagging newly-introduced vulnerabilities')
+  .requiredOption('--from <path>', 'Directory to diff from')
+  .requiredOption('--to <path>', 'Directory to diff to')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    await diffCommand({
+      json: options.json || false,
+      from: options.from,
+      to: options.to,
     });
   });
 

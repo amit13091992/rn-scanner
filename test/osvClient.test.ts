@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { parseOsvSeverity, extractFixedVersion, parseOsvRecord, queryVulnerabilities } from '../src/services/osvClient.js';
 import { analyzeSecurityVulnerabilities } from '../src/analyzers/securityVulnerabilities.js';
+import type { DependencyGraph } from '../src/types/dependencyGraph.js';
 
 test('parseOsvSeverity - reads database_specific.severity when present', () => {
   assert.equal(parseOsvSeverity({ id: 'X', database_specific: { severity: 'HIGH' } }), 'high');
@@ -278,6 +279,108 @@ test('analyzeSecurityVulnerabilities - summarizes severities and uses resolvedVe
     assert.deepEqual(result.summary, { critical: 0, high: 0, moderate: 0, low: 0, unknown: 0 });
     assert.ok(capturedBody?.includes('4.17.15'));
     assert.ok(!capturedBody?.includes('^4.17.0'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+/**
+ * Builds a fake npm-shaped dependency graph for:
+ *   your-app -> eslint@8.0.0 -> file-entry-cache@6.0.0 -> flat-cache@3.0.0 -> keyv@4.0.0
+ * mirroring the real-world case (a vulnerable transitive package several levels deep) this
+ * graph-based security scan is meant to catch.
+ */
+function makeDeepChainGraph(): DependencyGraph {
+  const nodes = new Map<string, DependencyGraph['nodes'] extends Map<string, infer V> ? V : never>([
+    ['', { name: '', version: '', parents: [], children: ['node_modules/eslint'] }],
+    ['node_modules/eslint', { name: 'eslint', version: '8.0.0', parents: [''], children: ['node_modules/eslint/node_modules/file-entry-cache'] }],
+    ['node_modules/eslint/node_modules/file-entry-cache', { name: 'file-entry-cache', version: '6.0.0', parents: ['node_modules/eslint'], children: ['node_modules/eslint/node_modules/file-entry-cache/node_modules/flat-cache'] }],
+    ['node_modules/eslint/node_modules/file-entry-cache/node_modules/flat-cache', { name: 'flat-cache', version: '3.0.0', parents: ['node_modules/eslint/node_modules/file-entry-cache'], children: ['node_modules/eslint/node_modules/file-entry-cache/node_modules/flat-cache/node_modules/keyv'] }],
+    ['node_modules/eslint/node_modules/file-entry-cache/node_modules/flat-cache/node_modules/keyv', { name: 'keyv', version: '4.0.0', parents: ['node_modules/eslint/node_modules/file-entry-cache/node_modules/flat-cache'], children: [] }],
+  ]);
+  return { manager: 'npm', hierarchyComplete: true, root: '', nodes };
+}
+
+test('analyzeSecurityVulnerabilities - finds a vulnerable transitive package several levels deep and reports its path', async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody: string | undefined;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('querybatch')) {
+      capturedBody = init?.body as string;
+      const parsed = JSON.parse(capturedBody!);
+      const results = parsed.queries.map((q: { package: { name: string } }) =>
+        q.package.name === 'keyv' ? { vulns: [{ id: 'GHSA-keyv-deep' }] } : { vulns: [] }
+      );
+      return { ok: true, json: async () => ({ results }) } as Response;
+    }
+    if (urlStr.includes('/vulns/GHSA-keyv-deep')) {
+      return {
+        ok: true,
+        json: async () => ({
+          id: 'GHSA-keyv-deep',
+          summary: 'Deep transitive vulnerability',
+          database_specific: { severity: 'HIGH' },
+          references: [],
+        }),
+      } as Response;
+    }
+    return { ok: false } as Response;
+  }) as typeof fetch;
+
+  try {
+    const graph = makeDeepChainGraph();
+    // `dependencies` (package.json-only) deliberately does not include keyv at all — proving
+    // the graph, not the direct-dependency list, is what finds it.
+    const result = await analyzeSecurityVulnerabilities(
+      [{ name: 'eslint', resolvedVersion: '8.0.0', requestedVersion: '8.0.0', type: 'devDependency' }],
+      [],
+      graph
+    );
+
+    assert.equal(result.scanned, true);
+    assert.equal(result.results.length, 1);
+    const [keyvResult] = result.results;
+    assert.equal(keyvResult.package, 'keyv');
+    assert.equal(keyvResult.version, '4.0.0');
+    assert.equal(keyvResult.direct, false);
+    assert.deepEqual(keyvResult.paths, [['eslint', 'file-entry-cache', 'flat-cache', 'keyv']]);
+    assert.equal(result.summary.high, 1);
+
+    // Every queried package should include keyv even though it's absent from `dependencies`.
+    const queriedNames = JSON.parse(capturedBody ?? '{"queries":[]}').queries.map((q: { package: { name: string } }) => q.package.name);
+    assert.ok(queriedNames.includes('keyv'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('analyzeSecurityVulnerabilities - a direct dependency found via the graph is reported as direct with a single-element path', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('querybatch')) {
+      return { ok: true, json: async () => ({ results: [{ vulns: [{ id: 'GHSA-eslint-direct' }] }, {}, {}, {}] }) } as Response;
+    }
+    if (urlStr.includes('/vulns/GHSA-eslint-direct')) {
+      return {
+        ok: true,
+        json: async () => ({ id: 'GHSA-eslint-direct', summary: 'Direct dep issue', database_specific: { severity: 'MODERATE' }, references: [] }),
+      } as Response;
+    }
+    return { ok: false } as Response;
+  }) as typeof fetch;
+
+  try {
+    const graph = makeDeepChainGraph();
+    const result = await analyzeSecurityVulnerabilities([], [], graph);
+
+    assert.equal(result.scanned, true);
+    assert.equal(result.results.length, 1);
+    const [eslintResult] = result.results;
+    assert.equal(eslintResult.package, 'eslint');
+    assert.equal(eslintResult.direct, true);
+    assert.deepEqual(eslintResult.paths, [['eslint']]);
   } finally {
     globalThis.fetch = originalFetch;
   }
