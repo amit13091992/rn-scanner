@@ -405,4 +405,19 @@ program
     });
   });
 
+// `check` is registered with { isDefault: true } so bare `rn-dep-scanner [options]` runs it —
+// but that same default-command wiring means an unrecognized subcommand name (a typo) is
+// otherwise silently routed to `check` as an unexpected positional argument, producing a
+// confusing "too many arguments for 'check'" error instead of a clear "unknown command".
+// Intercept that case here, before commander's own parsing, with a proper error message.
+const firstArg = process.argv[2];
+if (firstArg && !firstArg.startsWith('-') && firstArg !== 'help') {
+  const knownCommands = program.commands.map((cmd) => cmd.name());
+  if (!knownCommands.includes(firstArg)) {
+    printError(`Unknown command: "${firstArg}"`);
+    console.log(`\nRun 'rn-dep-scanner --help' to see the full command list, or 'rn-dep-scanner check' for the default dependency-compatibility scan.`);
+    process.exit(1);
+  }
+}
+
 program.parse();
