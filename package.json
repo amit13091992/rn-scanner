@@ -1,6 +1,6 @@
 {
   "name": "rn-dep-scanner",
-  "version": "1.3.16",
+  "version": "1.3.17",
   "description": "React Native project health CLI: dependency compatibility, breaking changes, New Architecture/Expo support, native Android/iOS toolchain checks, transitive OSV.dev security scanning, license/SBOM/policy reporting, and dependency graph tooling",
   "type": "module",
   "main": "dist/index.js",
@@ -44,6 +44,7 @@
     "dist",
     "package.json",
     "README.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "dependencies": {
