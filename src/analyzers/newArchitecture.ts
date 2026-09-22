@@ -39,11 +39,13 @@ export function analyzeNewArchitecture(
     }
 
     if (LIKELY_NATIVE_MODULE_PATTERN.test(dep.name) && !TOOLING_EXCLUSION_PATTERN.test(dep.name)) {
+      const reason = 'No New Architecture compatibility data available — verify manually before upgrading';
       results.push({
         package: dep.name,
         version,
-        support: 'unknown',
-        notes: 'No New Architecture compatibility data available — verify manually before upgrading',
+        support: 'data_unavailable',
+        notes: reason,
+        reason,
       });
     }
   }

@@ -18,8 +18,9 @@ test('analyzeNewArchitecture - flags a native-looking package with no data entry
   const { results } = analyzeNewArchitecture(dependencies, '0.83.0');
 
   assert.equal(results.length, 1);
-  assert.equal(results[0]!.support, 'unknown');
+  assert.equal(results[0]!.support, 'data_unavailable');
   assert.ok(results[0]!.notes?.includes('No New Architecture compatibility data'));
+  assert.ok(results[0]!.reason?.includes('No New Architecture compatibility data'));
 });
 
 test('analyzeNewArchitecture - does not flag a plain JS package with no data entry', () => {

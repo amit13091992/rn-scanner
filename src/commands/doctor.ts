@@ -171,6 +171,10 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
           .forEach((l) => console.log(`  └─ ${l.path} (${l.abi}, max PT_LOAD align: ${l.maxLoadAlign} bytes)`));
       });
     }
+    const pageSizeUnreadable = pageSize.filter((r) => r.notCheckedReason === 'unreadable_library');
+    if (pageSizeUnreadable.length > 0) {
+      printWarning(`${pageSizeUnreadable.length} package(s) shipped .so files that could not be read or parsed — alignment could not be determined`);
+    }
 
     if (iosPackage) {
       printSection('iOS Package (--ipa)');

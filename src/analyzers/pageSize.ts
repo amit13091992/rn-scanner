@@ -19,24 +19,40 @@ export function analyzePageSize(cwd: string, dependencies: DependencyInfo[]): Pa
     const version = dep.resolvedVersion || dep.requestedVersion;
 
     if (libraryFiles.length === 0) {
-      results.push({ package: dep.name, version, libraries: [], status: 'not-checked' });
+      results.push({
+        package: dep.name,
+        version,
+        libraries: [],
+        status: 'not-checked',
+        notCheckedReason: 'no_native_libraries',
+      });
       continue;
     }
 
     const libraries: NativeLibraryAlignment[] = [];
     for (const file of libraryFiles) {
       let buffer: Buffer;
-      try {
-        buffer = readFileSync(file.absolutePath);
-      } catch {
-        continue;
+      if (file.bytes) {
+        // Already-decompressed bytes from a zip-packaged (.aar/.jar) entry — see
+        // detectors/pageSize.ts's findLibrariesInArchive.
+        buffer = file.bytes;
+      } else {
+        try {
+          buffer = readFileSync(file.absolutePath);
+        } catch {
+          continue;
+        }
       }
 
       const alignment = parseElfAlignment(buffer);
       if (!alignment) continue;
 
+      const path = file.zipEntryName
+        ? `${toRelativePath(cwd, file.absolutePath)}!${file.zipEntryName}`
+        : toRelativePath(cwd, file.absolutePath);
+
       libraries.push({
-        path: toRelativePath(cwd, file.absolutePath),
+        path,
         abi: file.abi,
         is16kAligned: alignment.is16kAligned,
         maxLoadAlign: alignment.maxLoadAlign,
@@ -44,7 +60,13 @@ export function analyzePageSize(cwd: string, dependencies: DependencyInfo[]): Pa
     }
 
     if (libraries.length === 0) {
-      results.push({ package: dep.name, version, libraries: [], status: 'not-checked' });
+      results.push({
+        package: dep.name,
+        version,
+        libraries: [],
+        status: 'not-checked',
+        notCheckedReason: 'unreadable_library',
+      });
       continue;
     }
 

@@ -1,6 +1,25 @@
 import type { DependencyInfo } from '../types/dependency.js';
 import type { BreakingChange } from '../types/dependency.js';
-import { versionInRange, parseVersion } from '../utils/versionComparison.js';
+import { versionInRange, parseVersion, compareVersions } from '../utils/versionComparison.js';
+
+/**
+ * Whether a breaking change is historical (already true before the version being evaluated
+ * against — e.g. already baked into the project prior to an `upgrade --to` run, so it isn't
+ * caused by *this* upgrade), or newly relevant to the transition from `referenceVersion` to
+ * the version being checked. `action_required` is the high/critical subset of `relevant` —
+ * the changes that should actually influence a risk/verdict computation.
+ */
+export type BreakingChangeRelevance = 'historical' | 'relevant' | 'action_required';
+
+function classifyRelevance(
+  introducedInVersion: string,
+  referenceVersion: string,
+  severity: BreakingChange['severity']
+): BreakingChangeRelevance {
+  const alreadyInEffect = compareVersions(referenceVersion, introducedInVersion) >= 0;
+  if (alreadyInEffect) return 'historical';
+  return severity === 'critical' || severity === 'high' ? 'action_required' : 'relevant';
+}
 
 export interface BreakingChangeIssue {
   package: string;
@@ -10,6 +29,21 @@ export interface BreakingChangeIssue {
   migrationGuide?: string;
   references?: string[];
   introducedInVersion: string;
+  /**
+   * `historical` when this change was already true at `staleAsOfVersion` (the currently
+   * installed version) — not caused by whatever transition is being evaluated, so it should
+   * not drive a risk/verdict computation. `relevant`/`action_required` when the change is
+   * newly triggered by moving from the current version to the version being checked.
+   * `action_required` is the critical/high-severity subset of `relevant`.
+   *
+   * Only present when a real transition is being evaluated (`upgrade --to`, which passes a
+   * distinct `referenceDependencies` to `analyzeBreakingChanges`) — for a plain `check` (no
+   * transition, just "what's true right now"), every match is trivially `historical` by
+   * definition (see breakingChangeDatabase's `>=introducedInVersion`-style ranges), which
+   * would misleadingly read as "safe to ignore" on an active, unaddressed issue. `check`
+   * should keep using `stale` for its own action-required signal instead.
+   */
+  relevance?: BreakingChangeRelevance;
   /**
    * True when the installed version is far enough past introducedInVersion that this is
    * very likely already baked into the codebase rather than a pending action item — an
@@ -27,6 +61,15 @@ export interface BreakingChangeIssue {
  * pending action. Two majors ahead, or (within the same major — the common case for both
  * 0.x-versioned react-native and typical semver libraries whose minor bumps are frequent
  * but rarely breaking) six or more minors ahead, counts as stale.
+ *
+ * This is deliberately a different, coarser test than `classifyRelevance`'s `historical`
+ * value above: `stale` answers "is this old enough to stop nagging about on a plain check"
+ * (an age-drift heuristic, always computed), while `relevance` answers "was this caused by
+ * the specific transition an `upgrade --to` run is evaluating" (an exact version-boundary
+ * comparison, only computed for a real transition). They can disagree — e.g. a change one
+ * minor before the current version is not `stale` but is `historical` per `relevance` — and
+ * that's expected: `check`'s action-required signal should keep using `stale`, `upgrade`'s
+ * should keep using `relevance`. Don't conflate the two or try to derive one from the other.
  */
 function isStaleBreakingChange(introducedInVersion: string, currentVersion: string): boolean {
   const introduced = parseVersion(introducedInVersion);
@@ -227,7 +270,8 @@ const breakingChangeDatabase: BreakingChange[] = [
  */
 export function detectBreakingChanges(
   dep: DependencyInfo,
-  staleAsOfVersion?: string
+  staleAsOfVersion?: string,
+  isTransition = false
 ): BreakingChangeCheckResult {
   const version = dep.resolvedVersion || dep.requestedVersion;
   const relevantChanges = breakingChangeDatabase.filter(change => change.package === dep.name);
@@ -259,6 +303,9 @@ export function detectBreakingChanges(
           references: change.references,
           introducedInVersion: change.introducedInVersion,
           stale: isStaleBreakingChange(change.introducedInVersion, staleAsOfVersion ?? version),
+          ...(isTransition
+            ? { relevance: classifyRelevance(change.introducedInVersion, staleAsOfVersion ?? version, change.severity) }
+            : {}),
         },
       };
     }
@@ -277,15 +324,22 @@ export function detectBreakingChanges(
  *   anchor staleness when `dependencies` simulates a future/target state (see
  *   `detectBreakingChanges`'s `staleAsOfVersion`). Defaults to `dependencies` itself, which
  *   makes staleness a no-op adjustment for plain "check what I have now" callers.
+ * @param isTransition Set true only by a caller genuinely evaluating a hypothetical
+ *   version transition (currently just `upgrade.ts`) — this is what makes each issue's
+ *   `relevance` field meaningful (see its docstring on `BreakingChangeIssue`). Deliberately an
+ *   explicit parameter rather than inferred from `referenceDependencies !== dependencies`, so
+ *   a future caller passing a *copy* of the same array (e.g. `[...dependencies]`) for
+ *   unrelated reasons can't silently flip this on.
  */
 export function analyzeBreakingChanges(
   dependencies: DependencyInfo[],
-  referenceDependencies: DependencyInfo[] = dependencies
+  referenceDependencies: DependencyInfo[] = dependencies,
+  isTransition = false
 ): BreakingChangeCheckResult[] {
   const referenceByName = new Map(referenceDependencies.map(dep => [dep.name, dep]));
   return dependencies.map(dep => {
     const reference = referenceByName.get(dep.name);
     const staleAsOfVersion = reference ? (reference.resolvedVersion || reference.requestedVersion) : undefined;
-    return detectBreakingChanges(dep, staleAsOfVersion);
+    return detectBreakingChanges(dep, staleAsOfVersion, isTransition);
   });
 }

@@ -50,7 +50,7 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
         ? { ...dep, resolvedVersion: toVersion, requestedVersion: toVersion }
         : dep
     );
-    const breakingChanges = analyzeBreakingChanges(dependenciesAtTarget, dependencies).filter(
+    const breakingChanges = analyzeBreakingChanges(dependenciesAtTarget, dependencies, true).filter(
       (r): r is typeof r & { issue: NonNullable<typeof r.issue> } => r.detected && r.issue !== undefined
     );
 
@@ -69,7 +69,11 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
     const deprecatedPkgs = checkDeprecatedPackages(dependencies.map((d) => d.name));
     const duplicates = detectDuplicateDependencies(dependencies);
 
-    const criticalBreaking = breakingChanges.filter((c) => c.issue.severity === 'critical').length;
+    // Only changes newly relevant to *this* upgrade (i.e. not already true before it) should
+    // drive risk — a change introduced before the project's current RN version is historical
+    // and shouldn't block an unrelated upgrade.
+    const relevantBreakingChanges = breakingChanges.filter((c) => c.issue.relevance !== 'historical');
+    const criticalBreaking = relevantBreakingChanges.filter((c) => c.issue.severity === 'critical').length;
     const newArchUnsupported = newArchIssues.filter((i) => i.support === 'unsupported').length;
     const androidErrors = androidIssues.filter((i) => i.status === 'error').length;
     const iosErrors = iosIssues.filter((i) => i.status === 'error').length;
@@ -79,7 +83,7 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
     if (criticalBreaking > 0 || newArchUnsupported > 0 || androidErrors > 0 || iosErrors > 0 || nodeErrors > 0) {
       risk = 'high';
     } else if (
-      breakingChanges.length > 0 ||
+      relevantBreakingChanges.length > 0 ||
       newArchIssues.length > 0 ||
       androidIssues.length > 0 ||
       iosIssues.length > 0 ||
@@ -108,6 +112,7 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
         verdict,
         envVerdict,
         breakingChanges: breakingChanges.map((c) => c.issue),
+        relevantBreakingChangeCount: relevantBreakingChanges.length,
         newArchitecture: {
           isDefaultAtTarget: newArch.status.isNewArchDefault,
           isBridgeRemovedAtTarget: newArch.status.isBridgeRemoved,
@@ -139,7 +144,12 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
     } else {
       breakingChanges.forEach((c) => {
         const icon = c.issue.severity === 'critical' ? '🔴 CRITICAL' : c.issue.severity === 'high' ? '🟠 HIGH' : '🟡 MEDIUM';
-        console.log(`\n${icon}  ${c.issue.package}@${c.issue.version} (since ${c.issue.introducedInVersion})`);
+        const relevanceLabel = c.issue.relevance === 'historical'
+          ? ' [historical — already true before this upgrade, does not affect verdict]'
+          : c.issue.relevance === 'action_required'
+            ? ' [action required for this upgrade]'
+            : ' [relevant to this upgrade]';
+        console.log(`\n${icon}  ${c.issue.package}@${c.issue.version} (since ${c.issue.introducedInVersion})${relevanceLabel}`);
         c.issue.changes.forEach((msg) => console.log(`  • ${msg}`));
         if (c.issue.migrationGuide) console.log(`  Migration guide: ${c.issue.migrationGuide}`);
       });

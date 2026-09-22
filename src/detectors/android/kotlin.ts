@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { readVersionCatalogVersion } from './versionCatalog.js';
 
 export interface KotlinDetectionResult {
   version?: string;
@@ -18,8 +19,11 @@ function readIfExists(path: string): string | undefined {
 /**
  * Detects the Kotlin version declared in the Android project, checking (in order):
  *  - android/build.gradle(.kts) `ext { kotlinVersion = "..." }` (old Groovy DSL)
- *  - android/build.gradle(.kts) `id("org.jetbrains.kotlin.android") version "..."` (plugin DSL)
- *  - android/app/build.gradle(.kts) with the same two forms
+ *  - android/build.gradle(.kts) / android/settings.gradle(.kts) `id("org.jetbrains.kotlin.android")
+ *    version "..."` (plugin DSL, incl. the `pluginManagement { plugins { ... } }` block newer
+ *    templates put in settings.gradle)
+ *  - android/app/build.gradle(.kts) with the same forms
+ *  - android/gradle/libs.versions.toml `[versions] kotlin = "..."` (Gradle version catalog)
  */
 export function detectKotlinVersion(cwd: string): KotlinDetectionResult {
   const candidates = [
@@ -27,6 +31,8 @@ export function detectKotlinVersion(cwd: string): KotlinDetectionResult {
     join(cwd, 'android', 'build.gradle.kts'),
     join(cwd, 'android', 'app', 'build.gradle'),
     join(cwd, 'android', 'app', 'build.gradle.kts'),
+    join(cwd, 'android', 'settings.gradle'),
+    join(cwd, 'android', 'settings.gradle.kts'),
   ];
 
   for (const path of candidates) {
@@ -50,6 +56,11 @@ export function detectKotlinVersion(cwd: string): KotlinDetectionResult {
     if (kotlinDslMatch) {
       return { version: kotlinDslMatch[1], source: path };
     }
+  }
+
+  const catalogResult = readVersionCatalogVersion(cwd, ['kotlin', 'kotlin-android', 'kotlinAndroid']);
+  if (catalogResult.version) {
+    return catalogResult;
   }
 
   return {};

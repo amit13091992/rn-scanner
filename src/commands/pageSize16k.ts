@@ -33,6 +33,8 @@ export async function pageSize16kCommand(options: PageSize16kOptions = {}): Prom
 
     const checked = pageSize.filter((r) => r.status !== 'not-checked');
     const unaligned = pageSize.filter((r) => r.status === 'unaligned');
+    const noNativeLibraries = pageSize.filter((r) => r.notCheckedReason === 'no_native_libraries');
+    const unreadable = pageSize.filter((r) => r.notCheckedReason === 'unreadable_library');
 
     if (pageSize.length === 0) {
       printInfo('No dependencies to check — no readable package.json, or no dependencies declared');
@@ -47,6 +49,14 @@ export async function pageSize16kCommand(options: PageSize16kOptions = {}): Prom
           .filter((l) => !l.is16kAligned)
           .forEach((l) => console.log(`  └─ ${l.path} (${l.abi}, max PT_LOAD align: ${l.maxLoadAlign} bytes)`));
       });
+    }
+
+    if (checked.length > 0 && noNativeLibraries.length > 0) {
+      printInfo(`${noNativeLibraries.length} package(s) have no prebuilt native (.so) libraries to check — either JS-only, or compiling native code from source during the Android build`);
+    }
+    if (unreadable.length > 0) {
+      printWarning(`${unreadable.length} package(s) shipped .so files that could not be read or parsed — alignment could not be determined`);
+      unreadable.forEach((r) => console.log(`  └─ ${r.package}@${r.version}`));
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

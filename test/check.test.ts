@@ -157,6 +157,24 @@ test('checkCommand - security: false (--no-security) skips the scan and reports 
   }
 });
 
+test('checkCommand - breakingChanges entries omit relevance (only meaningful for an upgrade transition, not a plain check)', async () => {
+  const dir = makeTempDir();
+  try {
+    // react-native 0.75.0 matches the 0.73.0/0.72.0/0.71.0 breaking-change entries.
+    writeProject(dir, { 'react-native': '0.75.0', react: '18.3.1' });
+    const { output } = await captureStdout(() => checkCommand({ cwd: dir, json: true }));
+    const parsed = JSON.parse(output);
+    assert.ok(Array.isArray(parsed.breakingChanges));
+    assert.ok(parsed.breakingChanges.length > 0);
+    parsed.breakingChanges.forEach((issue: { relevance?: string; stale: boolean }) => {
+      assert.equal(issue.relevance, undefined);
+      assert.equal(typeof issue.stale, 'boolean');
+    });
+  } finally {
+    cleanup(dir);
+  }
+});
+
 test('checkCommand - a fatal error (unreadable package.json) reports json error and exits 1', async () => {
   const dir = makeTempDir();
   try {

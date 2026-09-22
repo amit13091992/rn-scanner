@@ -18,6 +18,12 @@ npx rn-dep-scanner
 npm install --save-dev rn-dep-scanner
 ```
 
+After a global install, `rn-dep-scanner <command>` should work directly (no `npx` needed) — npm
+links the `bin` entry into your global bin directory on `PATH`. If it doesn't, check that the
+global bin directory (`npm config get prefix`, then that prefix's `bin/`) is actually on your
+`PATH`; `npx rn-dep-scanner` always works as a fallback since it resolves and runs the package
+without relying on `PATH`.
+
 ## Commands
 
 ### `check` — dependency compatibility (default command)
@@ -28,15 +34,35 @@ rn-dep-scanner check [--json] [--strict] [--cwd <path>] [--no-security] [--profi
 
 Analyzes `package.json` + lockfile against React/React Native, flags version mismatches, duplicate/peer-dependency conflicts, deprecated packages, breaking changes, and New Architecture incompatibilities. Also checks (Expo projects only) whether the Expo SDK matches the installed React Native version and whether each installed package works in Expo Go, plus (all projects) whether each installed package's own sub-dependencies are actually present and version-satisfied. Reports a 0–100 health score. `--strict` exits 1 on errors (or on a critical/high vulnerability). Checks resolved versions — direct **and transitive** — against known vulnerabilities via OSV.dev by default (requires network; pass `--no-security` to skip). `--profile` prints a per-step timing breakdown of the scan itself.
 
-Per-project rule overrides live in an optional `.rn-dep-scanner.json` at the project root:
+Per-project rule overrides live in an optional `.rn-dep-scanner.json` **you author** at the
+project root (this is a config file you write and commit — not something the tool generates;
+contrast with `.rn-dep-scanner-baseline.json` below, which the tool generates and you don't
+hand-edit). Every field is optional and defaults to empty/unset — nothing below is a
+recommended default, each is only an example of the shape:
 
 ```json
 {
   "ignorePackages": ["some-noisy-package"],
   "ignoreVulnerabilities": ["GHSA-xxxx-xxxx-xxxx"],
-  "licenseDenylist": ["GPL-3.0"]
+  "licenseDenylist": ["GPL-3.0"],
+  "bannedPackages": ["some-vendor-package"],
+  "maxVulnerabilitySeverity": "high"
 }
 ```
+
+- `ignorePackages` — package names to exclude entirely from compatibility analysis.
+- `ignoreVulnerabilities` — OSV/GHSA/CVE advisory IDs to suppress from `security`/`check`/`policy`
+  findings (e.g. an advisory you've assessed as a false positive or already mitigated).
+- `licenseDenylist` — [SPDX license identifiers](https://spdx.org/licenses/) (e.g. `"GPL-3.0-only"`,
+  `"AGPL-3.0-only"`) that `licenses`/`policy` should flag if found on any installed package.
+  `"GPL-3.0"` above is purely illustrative — there is no built-in denylist; you decide which
+  licenses your project/organization disallows and list them here. License strings are matched
+  as read from each package's own `package.json` (not normalized against the SPDX list), so use
+  the identifier as the packages in your ecosystem actually declare it.
+- `bannedPackages` — package names `policy` should fail on regardless of license or vulnerabilities
+  (e.g. an internally-disallowed vendor SDK).
+- `maxVulnerabilitySeverity` — one of `"critical" | "high" | "moderate" | "low"`; `policy` fails
+  if any found vulnerability meets or exceeds this severity.
 
 ### `doctor` — environment health
 
@@ -135,14 +161,7 @@ Reports each direct dependency's on-disk install size, largest first — a quick
 rn-dep-scanner policy [--json] [--cwd <path>]
 ```
 
-Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and `maxVulnerabilitySeverity` fields (see below). Exits 1 on any violation.
-
-```json
-{
-  "bannedPackages": ["some-vendor-package"],
-  "maxVulnerabilitySeverity": "high"
-}
-```
+Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and `maxVulnerabilitySeverity` fields — see [Config](#check--dependency-compatibility-default-command) above for what each means and how to set it. Exits 1 on any violation.
 
 ### `baseline` — track only new findings
 
@@ -151,7 +170,14 @@ rn-dep-scanner baseline --create [--cwd <path>]   # snapshot current security fi
 rn-dep-scanner baseline [--json] [--cwd <path>]   # report only findings new since the snapshot
 ```
 
-Useful for adopting the tool on a large existing project without a wall of pre-existing issues blocking CI on day one. Scoped to security vulnerabilities.
+Useful for adopting the tool on a large existing project without a wall of pre-existing issues blocking CI on day one. Scoped to security vulnerabilities (not every `check` issue category — see Known Limitations).
+
+`baseline --create` writes `.rn-dep-scanner-baseline.json` to the project root — a **generated
+snapshot file**, distinct from the `.rn-dep-scanner.json` config file above: you don't hand-write
+or edit it, and there's no reason to configure "policy" inside it. Re-running `baseline --create`
+overwrites it with the current findings. Decide per-project whether to commit it (commit it if
+you want "new findings since this snapshot" to be consistent for every contributor/CI run; leave
+it uncommitted/gitignored if each machine or branch should track its own baseline).
 
 ### `report` — Markdown/HTML dependency report
 

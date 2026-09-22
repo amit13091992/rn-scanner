@@ -101,6 +101,47 @@ test('upgradeCommand - target version with mandatory New Architecture flags brid
   }
 });
 
+test('upgradeCommand - breaking change introduced before the current RN version is marked historical, not action_required', async () => {
+  const dir = makeTempDir();
+  try {
+    // react-native's 0.73.0 breaking change (critical) is already true at the current 0.77.3
+    // install — upgrading further to 0.80.0 should not blame that change on this upgrade.
+    writeProject(dir, '0.77.3');
+    const { output } = await captureStdout(() =>
+      upgradeCommand('0.80', { json: true, cwd: dir })
+    );
+    const parsed = JSON.parse(output);
+    const rnChanges = parsed.breakingChanges.filter((c: { package: string }) => c.package === 'react-native');
+    assert.ok(rnChanges.length > 0);
+    rnChanges.forEach((c: { relevance: string; introducedInVersion: string }) => {
+      assert.equal(c.relevance, 'historical');
+    });
+    // None of those historical changes should have pushed risk to high on their own.
+    assert.notEqual(parsed.risk, 'high');
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('upgradeCommand - breaking change newly introduced by this upgrade is relevant/action_required', async () => {
+  const dir = makeTempDir();
+  try {
+    // Starting below 0.71.0, upgrading to 0.75.0 — all three react-native breaking changes
+    // (0.71/0.72/0.73) are newly triggered by this specific upgrade.
+    writeProject(dir, '0.70.0');
+    const { output } = await captureStdout(() =>
+      upgradeCommand('0.75', { json: true, cwd: dir })
+    );
+    const parsed = JSON.parse(output);
+    const rnChanges = parsed.breakingChanges.filter((c: { package: string }) => c.package === 'react-native');
+    assert.ok(rnChanges.length > 0);
+    assert.ok(rnChanges.every((c: { relevance: string }) => c.relevance === 'relevant' || c.relevance === 'action_required'));
+    assert.ok(rnChanges.some((c: { relevance: string }) => c.relevance === 'action_required'));
+  } finally {
+    cleanup(dir);
+  }
+});
+
 test('upgradeCommand - human output prints a header and risk line', async () => {
   const dir = makeTempDir();
   try {

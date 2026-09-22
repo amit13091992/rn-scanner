@@ -48,7 +48,7 @@ export async function architectureCommand(options: ArchitectureOptions = {}): Pr
     }
 
     const issues = result.results.filter((r) => r.support === 'unsupported' || r.support === 'partial');
-    const untested = result.results.filter((r) => r.support === 'unknown');
+    const dataUnavailable = result.results.filter((r) => r.support === 'data_unavailable');
 
     if (issues.length === 0) {
       printSuccess('No known New Architecture incompatibilities in checked dependencies');
@@ -63,8 +63,8 @@ export async function architectureCommand(options: ArchitectureOptions = {}): Pr
       });
     }
 
-    if (untested.length > 0) {
-      printInfo(`${untested.length} package(s) have no New Architecture compatibility data — verify manually before upgrading`);
+    if (dataUnavailable.length > 0) {
+      printInfo(`${dataUnavailable.length} package(s) have no New Architecture compatibility data available — not a compatibility issue, just unverified (verify manually before upgrading)`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

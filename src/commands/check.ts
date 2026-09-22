@@ -158,7 +158,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const newArchIssues = newArch.results.filter(
       (r) => r.support === 'unsupported' || r.support === 'partial'
     );
-    const newArchUntested = newArch.results.filter((r) => r.support === 'unknown');
+    const newArchDataUnavailable = newArch.results.filter((r) => r.support === 'data_unavailable');
 
     const detectedBreakingChanges = breakingChangesResults.filter((r): r is typeof r & { issue: NonNullable<typeof r.issue> } => r.detected && r.issue !== undefined);
     const actionableBreakingChanges = detectedBreakingChanges.filter(c => !c.issue.stale);
@@ -234,8 +234,8 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
             }
           });
         }
-        if (newArchUntested.length > 0) {
-          printInfo(`${newArchUntested.length} package(s) have no New Architecture compatibility data — verify manually before upgrading`);
+        if (newArchDataUnavailable.length > 0) {
+          printInfo(`${newArchDataUnavailable.length} package(s) have no New Architecture compatibility data available — not a compatibility issue, just unverified (verify manually before upgrading)`);
         }
       }
 
@@ -526,7 +526,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           isDefault: newArch.status.isNewArchDefault,
           isBridgeRemoved: newArch.status.isBridgeRemoved,
           issues: newArchIssues,
-          untested: newArchUntested,
+          dataUnavailable: newArchDataUnavailable,
         },
         expo: expoCompat,
         ...(expoCompat.isExpoProject ? { expoGoSupport } : {}),

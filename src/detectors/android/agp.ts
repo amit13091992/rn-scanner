@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { readVersionCatalogVersion } from './versionCatalog.js';
 
 export interface AgpDetectionResult {
   version?: string;
@@ -18,7 +19,12 @@ function readIfExists(path: string): string | undefined {
 /**
  * Detects the Android Gradle Plugin (AGP) version, checking (in order):
  *  - android/build.gradle(.kts) `com.android.tools.build:gradle:X.Y.Z` (classpath DSL)
- *  - android/build.gradle(.kts) `id("com.android.application") version "X.Y.Z"` (plugin DSL)
+ *  - android/build.gradle(.kts) / android/settings.gradle(.kts) `id("com.android.application")
+ *    version "X.Y.Z"` (plugin DSL, incl. the `pluginManagement { plugins { ... } }` block newer
+ *    templates put in settings.gradle rather than build.gradle)
+ *  - android/gradle/libs.versions.toml `[versions] agp = "X.Y.Z"` (Gradle version catalog —
+ *    the pattern newest RN templates use, resolved indirectly via `alias(libs.plugins.agp)`
+ *    rather than a literal version string anywhere in a build.gradle file)
  */
 export function detectAgpVersion(cwd: string): AgpDetectionResult {
   const candidates = [
@@ -26,6 +32,8 @@ export function detectAgpVersion(cwd: string): AgpDetectionResult {
     join(cwd, 'android', 'build.gradle.kts'),
     join(cwd, 'android', 'app', 'build.gradle'),
     join(cwd, 'android', 'app', 'build.gradle.kts'),
+    join(cwd, 'android', 'settings.gradle'),
+    join(cwd, 'android', 'settings.gradle.kts'),
   ];
 
   for (const path of candidates) {
@@ -43,6 +51,11 @@ export function detectAgpVersion(cwd: string): AgpDetectionResult {
     if (pluginMatch) {
       return { version: pluginMatch[1], source: path };
     }
+  }
+
+  const catalogResult = readVersionCatalogVersion(cwd, ['agp', 'android-gradle-plugin', 'androidGradlePlugin']);
+  if (catalogResult.version) {
+    return catalogResult;
   }
 
   return {};
