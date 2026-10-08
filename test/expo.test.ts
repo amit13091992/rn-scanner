@@ -137,3 +137,10 @@ test('analyzeExpoCompatibility - SDK detected but version unparseable does not t
     cleanup(dir);
   }
 });
+
+test('getExpoSdkRequirements - SDK 56 pins React Native 0.85 (corrected from an earlier 0.84 estimate)', () => {
+  const req = getExpoSdkRequirements(56);
+  assert.equal(req?.reactNative, '0.85');
+  assert.equal(req?.newArchRequired, true);
+  assert.equal(req?.confidence, 'confirmed');
+});
