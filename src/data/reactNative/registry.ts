@@ -310,4 +310,25 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
     },
     ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
   },
+  {
+    // RN 0.88 is scheduled for 2026-10-12 and not yet shipped as of this entry — carried
+    // forward from 0.87 (no confirmed diff available yet), same extrapolate-ahead approach
+    // this registry already used for 0.80-0.86 before each of those shipped. Replace with
+    // confirmed values via the Upgrade Helper diff once 0.88 actually releases (see
+    // MAINTENANCE.md).
+    version: '0.88',
+    node: '22.13.0',
+    android: {
+      jdk: '17',
+      kotlin: '2.0.21',
+      agp: '9.0.0',
+      gradle: '8.13',
+      compileSdk: '37',
+      targetSdk: '35',
+      minSdk: '24',
+      ndk: '27.1.12297006',
+      buildToolsVersion: '37.0.0',
+    },
+    ios: { xcode: '16.0', deploymentTarget: '13.4', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
+  },
 ];
