@@ -33,7 +33,7 @@ test('sbomCommand - emits a valid CycloneDX document with one component per inst
       JSON.stringify({
         lockfileVersion: 3,
         packages: {
-          '': { name: 'app' },
+          '': { name: 'app', dependencies: { foo: '1.0.0' } },
           'node_modules/foo': { version: '1.0.0' },
         },
       })

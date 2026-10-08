@@ -46,8 +46,8 @@ function writeNestedProject(dir: string): void {
     JSON.stringify({
       lockfileVersion: 3,
       packages: {
-        '': { name: 'test-app' },
-        'node_modules/foo': { version: '1.0.0' },
+        '': { name: 'test-app', dependencies: { foo: '1.0.0' } },
+        'node_modules/foo': { version: '1.0.0', dependencies: { bar: '2.0.0' } },
         'node_modules/foo/node_modules/bar': { version: '2.0.0' },
       },
     })
@@ -158,7 +158,7 @@ test('whyCommand - --all-workspaces outside a workspace falls back to a plain si
   const dir = makeTempDir();
   try {
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'single-app', dependencies: { 'left-pad': '^1.0.0' } }));
-    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/left-pad': { version: '1.3.0' } } }));
+    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': { dependencies: { 'left-pad': '^1.0.0' } }, 'node_modules/left-pad': { version: '1.3.0' } } }));
 
     const { output } = await captureStdout(() => whyCommand('left-pad', { cwd: dir, json: true, allWorkspaces: true }));
     const result = JSON.parse(output);

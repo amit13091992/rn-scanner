@@ -53,9 +53,12 @@ function writeProject(dir: string, dependencies: Record<string, string>): void {
     join(dir, 'package-lock.json'),
     JSON.stringify({
       lockfileVersion: 3,
-      packages: Object.fromEntries(
-        Object.entries(dependencies).map(([name, version]) => [`node_modules/${name}`, { version }])
-      ),
+      packages: {
+        '': { name: 'test-app', dependencies },
+        ...Object.fromEntries(
+          Object.entries(dependencies).map(([name, version]) => [`node_modules/${name}`, { version }])
+        ),
+      },
     })
   );
 }

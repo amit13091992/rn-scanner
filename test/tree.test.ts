@@ -46,8 +46,8 @@ function writeNestedProject(dir: string): void {
     JSON.stringify({
       lockfileVersion: 3,
       packages: {
-        '': { name: 'test-app' },
-        'node_modules/foo': { version: '1.0.0' },
+        '': { name: 'test-app', dependencies: { foo: '1.0.0' } },
+        'node_modules/foo': { version: '1.0.0', dependencies: { bar: '2.0.0' } },
         'node_modules/foo/node_modules/bar': { version: '2.0.0' },
       },
     })

@@ -33,7 +33,7 @@ test('impactCommand - reports currentVersion, a root-declared conflict, and a re
       JSON.stringify({
         lockfileVersion: 3,
         packages: {
-          '': { name: 'app' },
+          '': { name: 'app', dependencies: { foo: '1.0.0' } },
           'node_modules/foo': { version: '1.0.0' },
         },
       })

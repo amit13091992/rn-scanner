@@ -31,7 +31,7 @@ function writeProject(dir: string, deps: Record<string, string>): void {
     JSON.stringify({
       lockfileVersion: 3,
       packages: {
-        '': { name: 'app' },
+        '': { name: 'app', dependencies: deps },
         ...Object.fromEntries(Object.entries(deps).map(([name, version]) => [`node_modules/${name}`, { version }])),
       },
     })

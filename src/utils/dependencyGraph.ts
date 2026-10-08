@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, relative, sep } from 'path';
 import type { DependencyGraph, DependencyGraphNode } from '../types/dependencyGraph.js';
 import { detectPackageManager, parseLockfile } from './lockfile.js';
 import { readPackageJson, getAllDependencies } from './packageJson.js';
@@ -33,10 +33,16 @@ function ensureWorkspaceNode(
 }
 
 interface NPMLockPackageRaw {
+  name?: string;
   version?: string;
   dev?: boolean;
   optional?: boolean;
   peer?: boolean;
+  /** A workspace-package symlink entry under node_modules (e.g. "node_modules/@acme/shared")
+   *  points at its real entry via `resolved` (e.g. "packages/shared") instead of carrying its
+   *  own version/dependencies. */
+  link?: boolean;
+  resolved?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
@@ -50,34 +56,85 @@ interface NPMLockRaw {
 }
 
 /**
- * Derives the parent packages-key for an npm lockfile v2/v3 "packages" path by
- * stripping the last "node_modules/<name>" segment. Root ("") has no parent.
+ * Strips the last "node_modules/<name>" segment from an npm lockfile "packages" path, giving
+ * the path to search from one level up — used by `resolveNpmDependency`'s Node-resolution-style
+ * walk, not for parent/child wiring (edges come from each entry's own `dependencies`, not path
+ * nesting — see `buildNpmGraph`'s doc comment for why path nesting alone is wrong).
  */
-function getParentPath(path: string): string | null {
+function stripLastNodeModulesSegment(path: string): string | null {
   if (path === '') return null;
-
   const idx = path.lastIndexOf('node_modules/');
   if (idx === -1) return '';
-
-  // Find the start of the LAST "node_modules/<name>" segment.
-  // Walk back to find the previous "node_modules/" boundary if any.
   const prefix = path.slice(0, idx);
-  // prefix ends with '/' if there is a parent chain, or is '' for a top-level package.
   if (prefix === '') return '';
-  return prefix.slice(0, -1); // strip trailing slash
+  return prefix.slice(0, -1);
 }
 
-function extractNameFromPath(path: string): string {
+/**
+ * The display name for a "packages" entry: its own `name` field when present (always present
+ * for a root/workspace entry whose package.json name differs from its path's basename —
+ * npm omits it when they match), else the last `node_modules/<name>` segment for an ordinary
+ * installed dependency, else the path's own basename as a last resort (a workspace package
+ * whose directory name happens to match its package.json name).
+ */
+function npmEntryName(path: string, pkg: NPMLockPackageRaw): string {
+  if (pkg.name) return pkg.name;
+  if (path === '') return '';
   const idx = path.lastIndexOf('node_modules/');
-  if (idx === -1) return '';
-  const rest = path.slice(idx + 'node_modules/'.length);
-  const segments = rest.split('/');
-  if (segments[0]?.startsWith('@') && segments.length > 1) {
-    return `${segments[0]}/${segments[1]}`;
+  if (idx !== -1) {
+    const rest = path.slice(idx + 'node_modules/'.length);
+    const segments = rest.split('/');
+    if (segments[0]?.startsWith('@') && segments.length > 1) {
+      return `${segments[0]}/${segments[1]}`;
+    }
+    return segments[0] || '';
   }
-  return segments[0] || '';
+  const segments = path.split('/');
+  return segments[segments.length - 1] || '';
 }
 
+/**
+ * Resolves `name` as Node's own module resolution would from `fromPath`: try
+ * `<fromPath>/node_modules/<name>` first, then walk up one `node_modules/<segment>` layer at a
+ * time until the root's own `node_modules/<name>`. Follows a workspace-package symlink entry's
+ * `resolved` pointer to its real entry (see `NPMLockPackageRaw.link`).
+ */
+function resolveNpmDependency(
+  packages: Record<string, NPMLockPackageRaw>,
+  fromPath: string,
+  name: string
+): string | null {
+  let current: string | null = fromPath;
+  while (current !== null) {
+    const candidate = current === '' ? `node_modules/${name}` : `${current}/node_modules/${name}`;
+    const entry = packages[candidate];
+    if (entry) {
+      if (entry.link && entry.resolved && packages[entry.resolved]) {
+        return entry.resolved;
+      }
+      return candidate;
+    }
+    if (current === '') return null;
+    current = stripLastNodeModulesSegment(current);
+  }
+  return null;
+}
+
+/**
+ * Builds the npm dependency graph from each "packages" entry's own `dependencies`/
+ * `optionalDependencies` (BFS-resolved via `resolveNpmDependency`), NOT from path nesting.
+ * Path nesting only reflects nesting when npm physically can't hoist a package (a version
+ * conflict) — the much more common case is every package flat at `node_modules/<name>`
+ * regardless of whether it's a direct or transitive dependency, with the real tree recoverable
+ * only from each entry's declared `dependencies`. Wiring by path alone (this function's
+ * previous implementation) misattributed every hoisted transitive dependency as a direct
+ * child of the project root, and — since an npm workspace's sibling packages and every hoisted
+ * `node_modules/*` entry sit at the same path depth — made `--cwd`-scoping into a specific
+ * workspace package a no-op (the whole monorepo's lockfile came back as one graph regardless
+ * of which package you asked about). BFS-walking from the specific entry at `cwd` fixes both:
+ * an ordinary transitive dependency now resolves to its real parent, and scoping into a
+ * workspace package naturally limits the graph to what that package can actually reach.
+ */
 function buildNpmGraph(cwd: string): DependencyGraph | null {
   const { lockfilePath } = detectPackageManager(cwd);
   if (!existsSync(lockfilePath)) return null;
@@ -86,55 +143,81 @@ function buildNpmGraph(cwd: string): DependencyGraph | null {
   const parsed: NPMLockRaw = JSON.parse(content);
   const lockfileVersion = parsed.lockfileVersion || parsed.version || 1;
 
+  if (lockfileVersion < 2 || !parsed.packages) {
+    // v1 lockfiles have a flat, nested "dependencies" tree but no packages-path hierarchy
+    // we can reliably line up with our npm-specific id scheme; caller falls back to best-effort.
+    return null;
+  }
+  const packages = parsed.packages;
+
   const nodes = new Map<string, DependencyGraphNode>();
-
-  if (lockfileVersion >= 2 && parsed.packages) {
-    const packages = parsed.packages;
-
-    // First pass: create nodes for every packages entry (including root "").
-    Object.entries(packages).forEach(([path, pkg]) => {
-      const name = path === '' ? '' : extractNameFromPath(path);
-      nodes.set(path, {
-        name,
-        version: pkg.version || '',
-        parents: [],
-        children: [],
-        dev: pkg.dev,
-        optional: pkg.optional,
-      });
+  Object.entries(packages).forEach(([path, pkg]) => {
+    nodes.set(path, {
+      name: npmEntryName(path, pkg),
+      version: pkg.version || '',
+      parents: [],
+      children: [],
+      dev: pkg.dev,
+      optional: pkg.optional,
     });
-
-    if (!nodes.has('')) {
-      nodes.set('', { name: '', version: '', parents: [], children: [] });
-    }
-
-    // Second pass: wire parent/child edges based on path hierarchy.
-    Object.keys(packages).forEach(path => {
-      if (path === '') return;
-      const parentPath = getParentPath(path);
-      if (parentPath === null) return;
-      if (!nodes.has(parentPath)) {
-        nodes.set(parentPath, { name: '', version: '', parents: [], children: [] });
-      }
-      const node = nodes.get(path);
-      const parentNode = nodes.get(parentPath);
-      if (node && parentNode) {
-        node.parents.push(parentPath);
-        parentNode.children.push(path);
-      }
-    });
-
-    return {
-      manager: 'npm',
-      hierarchyComplete: true,
-      root: '',
-      nodes,
-    };
+  });
+  if (!nodes.has('')) {
+    nodes.set('', { name: '', version: '', parents: [], children: [] });
   }
 
-  // v1 lockfiles have a flat, nested "dependencies" tree but no packages-path hierarchy
-  // we can reliably line up with our npm-specific id scheme; caller falls back to best-effort.
-  return null;
+  // Scope the graph to the specific workspace package at `cwd`, when it resolves to one, so
+  // `why`/`tree`/`security` run from inside a workspace package see only what that package can
+  // actually reach — not every sibling package's dependencies lumped into one graph.
+  const lockfileRootDir = resolveDependencyRoot(cwd);
+  const relPath = relative(lockfileRootDir, resolve(cwd)).split(sep).join('/');
+  const root = relPath !== '' && relPath !== '.' && Object.prototype.hasOwnProperty.call(packages, relPath)
+    ? relPath
+    : '';
+
+  const addEdge = (parentId: string, childId: string, dev?: boolean, optional?: boolean): void => {
+    const parentNode = nodes.get(parentId);
+    const childNode = nodes.get(childId);
+    if (!parentNode || !childNode) return;
+    if (!parentNode.children.includes(childId)) parentNode.children.push(childId);
+    if (!childNode.parents.includes(parentId)) childNode.parents.push(parentId);
+    if (dev) childNode.dev = true;
+    if (optional) childNode.optional = true;
+  };
+
+  const queue: string[] = [root];
+  const visited = new Set<string>();
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    if (visited.has(path)) continue;
+    visited.add(path);
+
+    const entry = packages[path];
+    if (!entry) continue;
+
+    const deps = { ...entry.dependencies, ...entry.optionalDependencies };
+    // devDependencies are only real "direct" dependencies for whichever package is the
+    // effective root of this scan — a transitive package's own devDependencies were never
+    // installed as part of the tree at all.
+    if (path === root && entry.devDependencies) {
+      Object.assign(deps, entry.devDependencies);
+    }
+
+    Object.keys(deps).forEach((depName) => {
+      const resolved = resolveNpmDependency(packages, path, depName);
+      if (!resolved) return;
+      queue.push(resolved);
+      const isDev = path === root && !!entry.devDependencies?.[depName];
+      const isOptional = !!entry.optionalDependencies?.[depName];
+      addEdge(path, resolved, isDev, isOptional);
+    });
+  }
+
+  return {
+    manager: 'npm',
+    hierarchyComplete: true,
+    root,
+    nodes,
+  };
 }
 
 interface YarnEntry {

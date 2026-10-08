@@ -512,3 +512,115 @@ describe('buildDependencyGraph (workspace package cross-linking)', () => {
     strictEqual(paths[0].join(' > '), '@acme/shared > left-pad');
   });
 });
+
+describe('buildDependencyGraph (npm — real hoisted-tree resolution, not path nesting)', () => {
+  test('a hoisted transitive dependency (flat at top-level node_modules, no path nesting) resolves as a child of its real parent, not of root', async () => {
+    const dir = makeTempProject();
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'app', version: '1.0.0', dependencies: { foo: '^1.0.0' } })
+    );
+
+    // Realistic npm v3 shape: foo and bar are both flat at top-level node_modules (the common
+    // hoisted case) — bar is NOT nested under foo/node_modules. The only signal that bar is a
+    // dependency of foo, not of the root, is foo's own `dependencies` field.
+    writeFileSync(
+      join(dir, 'package-lock.json'),
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'app', version: '1.0.0', dependencies: { foo: '^1.0.0' } },
+          'node_modules/foo': { version: '1.0.0', dependencies: { bar: '^2.0.0' } },
+          'node_modules/bar': { version: '2.0.0' },
+        },
+      })
+    );
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.manager, 'npm');
+
+    const paths = findPathsToPackage(graph!, 'bar');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), 'foo > bar');
+
+    const rootNode = graph!.nodes.get(graph!.root)!;
+    strictEqual(rootNode.children.includes('node_modules/bar'), false, 'bar must not be a direct child of root');
+  });
+
+  test('scopes the graph to the specific workspace package at cwd, not the whole monorepo lockfile', async () => {
+    const root = makeTempProject();
+
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'monorepo-root', private: true, workspaces: ['packages/*'] })
+    );
+    writeFileSync(
+      join(root, 'package-lock.json'),
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'monorepo-root', workspaces: ['packages/*'] },
+          'node_modules/@acme/shared': { resolved: 'packages/shared', link: true },
+          'node_modules/mobile-app': { resolved: 'packages/mobile-app', link: true },
+          'node_modules/left-pad': { version: '1.3.0' },
+          'node_modules/right-pad': { version: '1.0.0' },
+          'packages/shared': { name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } },
+          'packages/mobile-app': { version: '1.0.0', dependencies: { 'right-pad': '^1.0.0' } },
+        },
+      })
+    );
+
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(join(sharedDir, 'package.json'), JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } }));
+    writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', version: '1.0.0', dependencies: { 'right-pad': '^1.0.0' } }));
+
+    const graphFromApp = await buildDependencyGraph(appDir);
+    ok(graphFromApp);
+    strictEqual(graphFromApp!.root, 'packages/mobile-app');
+    strictEqual(findPathsToPackage(graphFromApp!, 'right-pad').length, 1);
+    strictEqual(findPathsToPackage(graphFromApp!, 'left-pad').length, 0, 'mobile-app cannot reach shared\'s dependency, it was never declared by mobile-app');
+
+    const graphFromShared = await buildDependencyGraph(sharedDir);
+    ok(graphFromShared);
+    strictEqual(graphFromShared!.root, 'packages/shared');
+    strictEqual(findPathsToPackage(graphFromShared!, 'left-pad').length, 1);
+    strictEqual(findPathsToPackage(graphFromShared!, 'right-pad').length, 0);
+  });
+
+  test('a workspace package depending on a sibling workspace package follows the lockfile\'s link/resolved pointer', async () => {
+    const root = makeTempProject();
+
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'monorepo-root', private: true, workspaces: ['packages/*'] })
+    );
+    writeFileSync(
+      join(root, 'package-lock.json'),
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'monorepo-root', workspaces: ['packages/*'] },
+          'node_modules/@acme/shared': { resolved: 'packages/shared', link: true },
+          'node_modules/left-pad': { version: '1.3.0' },
+          'packages/shared': { name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } },
+          'packages/mobile-app': { version: '1.0.0', dependencies: { '@acme/shared': '1.0.0' } },
+        },
+      })
+    );
+
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', version: '1.0.0', dependencies: { '@acme/shared': '1.0.0' } }));
+
+    const graph = await buildDependencyGraph(appDir);
+    ok(graph);
+    const paths = findPathsToPackage(graph!, 'left-pad');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), '@acme/shared > left-pad');
+  });
+});

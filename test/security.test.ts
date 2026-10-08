@@ -46,8 +46,8 @@ function writeNestedProject(dir: string): void {
     JSON.stringify({
       lockfileVersion: 3,
       packages: {
-        '': { name: 'test-app' },
-        'node_modules/eslint': { version: '8.0.0', dev: true },
+        '': { name: 'test-app', devDependencies: { eslint: '8.0.0' } },
+        'node_modules/eslint': { version: '8.0.0', dev: true, dependencies: { keyv: '4.0.0' } },
         'node_modules/eslint/node_modules/keyv': { version: '4.0.0', dev: true },
       },
     })
