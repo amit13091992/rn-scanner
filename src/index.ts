@@ -15,6 +15,7 @@ import { sbomCommand } from './commands/sbom.js';
 import { diffCommand } from './commands/diff.js';
 import { legacyApisCommand } from './commands/legacyApis.js';
 import { aiExposureCommand } from './commands/aiExposure.js';
+import { renovateConfigCommand } from './commands/renovateConfig.js';
 import { bundleCommand } from './commands/bundle.js';
 import { policyCommand } from './commands/policy.js';
 import { baselineCommand } from './commands/baseline.js';
@@ -192,6 +193,18 @@ program
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
       allWorkspaces: options.allWorkspaces || false,
+    });
+  });
+
+program
+  .command('renovate-config')
+  .description('Generate a starter Renovate config that groups native modules and React Native core packages, and flags New Architecture review-worthy updates')
+  .option('--out <path>', 'Write the config to this file instead of stdout')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await renovateConfigCommand({
+      cwd: options.cwd || process.cwd(),
+      out: options.out,
     });
   });
 

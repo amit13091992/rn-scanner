@@ -256,6 +256,22 @@ rn-dep-scanner sbom [--html [path]] [--cwd <path>]
 Exports a CycloneDX 1.5 Software Bill of Materials to stdout as JSON (no `--json` flag needed —
 JSON is simply the default output; pass `--html` for an HTML rendering instead).
 
+### `renovate-config`
+
+```bash
+rn-dep-scanner renovate-config [--out <path>] [--cwd <path>]
+```
+
+Generates a starter Renovate config aware of React Native's specific update risks — not a
+generic `config:recommended` copy-paste. Groups `react-native`/`react`/`react-dom`/`expo` into
+one PR (they must stay version-locked), groups every `react-native-*`/
+`@react-native-community/*`/`@react-navigation/*` native module into its own more-cautious
+group (a native-module update can break at runtime without a type error), and gives any
+installed package `data/newArchitecture.ts` already flags as unsupported a dedicated
+high-priority group labeled `new-architecture-review` — an update to one of those might *be*
+the fix. Respects `.rn-dep-scanner.json`'s `ignorePackages` via Renovate's `ignoreDeps`. Prints
+to stdout by default; `--out <path>` writes the file (e.g. `--out renovate.json`) instead.
+
 ### `diff --from <dir> --to <dir>`
 
 ```bash
