@@ -9,6 +9,7 @@ import { analyzeExpoCompatibility } from '../analyzers/expoCompatibility.js';
 import { analyzeExpoGoSupport } from '../analyzers/expoGoSupport.js';
 import { analyzeDependencyCompleteness } from '../analyzers/dependencyCompleteness.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
+import { analyzeAiSdkExposure } from '../analyzers/aiSdkExposure.js';
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { loadConfig } from '../utils/config.js';
 import { Profiler } from '../utils/profiler.js';
@@ -155,6 +156,9 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           return analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
         })
       : null;
+    const aiSdkExposure = await profiler.time('analyzeAiSdkExposure', () =>
+      analyzeAiSdkExposure(cwd, dependencies)
+    );
     const newArchIssues = newArch.results.filter(
       (r) => r.support === 'unsupported' || r.support === 'partial'
     );
@@ -321,6 +325,24 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           });
       }
 
+      printSection('AI SDK Exposure');
+      if (!aiSdkExposure.directCallWarning && aiSdkExposure.keyExposures.length === 0) {
+        printSuccess('No client-side AI provider SDK calls or AI-provider-key-shaped literals detected');
+      } else {
+        aiSdkExposure.sdksDetected.forEach((sdk) => {
+          printWarning(`${sdk.packageName} (${sdk.provider}) is called directly from the app`);
+        });
+        if (aiSdkExposure.directCallWarning) {
+          console.log('  └─ Proxy AI provider calls through your own backend; calling them directly from the client ships your provider key inside the app bundle.');
+        }
+        aiSdkExposure.keyExposures.forEach((exp) => {
+          printError(`Possible ${exp.label} in ${exp.file}:${exp.line}`);
+        });
+        if (aiSdkExposure.keyExposures.length > 0) {
+          console.log('  └─ Move this value out of source (env/secret manager) and rotate the key.');
+        }
+      }
+
       if (errors > 0) {
         printSection('Errors');
         compatibilityResults
@@ -438,8 +460,11 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       if (requiredMissingDeps.length > 0) {
         console.log(`🧩 Missing sub-dependencies: ${requiredMissingDeps.length}`);
       }
+      if (aiSdkExposure.keyExposures.length > 0) {
+        console.log(`🔑 AI provider key literals found: ${aiSdkExposure.keyExposures.length}`);
+      }
 
-      const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length + newArchUnsupported + (expoCompat.reactNativeMismatch ? 1 : 0) + expoGoUnsupported.length + requiredMissingDeps.length;
+      const criticalIssues = errors + duplicates.filter(d => d.severity === 'critical').length + peerConflicts.length + newArchUnsupported + (expoCompat.reactNativeMismatch ? 1 : 0) + expoGoUnsupported.length + requiredMissingDeps.length + aiSdkExposure.keyExposures.length;
       if (criticalIssues > 0 || actionableBreakingChanges.length > 0) {
         console.log(chalk.red.bold('\n⚠️  Action Required:'));
         if (errors > 0) {
@@ -466,10 +491,13 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         if (requiredMissingDeps.length > 0) {
           console.log(`  • ${requiredMissingDeps.length} sub-dependency requirement(s) missing or unsatisfied`);
         }
+        if (aiSdkExposure.keyExposures.length > 0) {
+          console.log(`  • ${aiSdkExposure.keyExposures.length} AI provider key literal(s) found in source — rotate and remove`);
+        }
         console.log(chalk.gray('\nAddress the items above (each has its own section with fix steps), then re-run this scan to confirm.'));
-      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0 && expoCompat.messages.length === 0 && expoGoUnsupported.length === 0 && dependencyCompleteness.missing.length === 0) {
+      } else if (compatible > 0 && errors === 0 && warnings === 0 && versionMismatches.length === 0 && duplicates.length === 0 && peerConflicts.length === 0 && deprecatedPkgs.length === 0 && newArchIssues.length === 0 && actionableBreakingChanges.length === 0 && expoCompat.messages.length === 0 && expoGoUnsupported.length === 0 && dependencyCompleteness.missing.length === 0 && !aiSdkExposure.directCallWarning) {
         console.log(chalk.green.bold('\n✨ All dependencies look good!'));
-      } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0 || expoCompat.messages.length > 0 || expoGoUnsupported.length > 0 || dependencyCompleteness.missing.length > 0) {
+      } else if (warnings > 0 || versionMismatches.length > 0 || duplicates.length > 0 || peerConflicts.length > 0 || deprecatedPkgs.length > 0 || newArchIssues.length > 0 || expoCompat.messages.length > 0 || expoGoUnsupported.length > 0 || dependencyCompleteness.missing.length > 0 || aiSdkExposure.directCallWarning) {
         console.log(chalk.yellow.bold('\n⚠️  Consider addressing detected issues'));
         console.log(chalk.gray('None of these are critical, but reviewing them now avoids surprises during your next upgrade.'));
       } else if (notChecked > 0) {
@@ -531,6 +559,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         expo: expoCompat,
         ...(expoCompat.isExpoProject ? { expoGoSupport } : {}),
         dependencyCompleteness,
+        aiSdkExposure,
         security: securityEnabled
           ? securityResult
           : {
@@ -557,7 +586,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const criticalOrHighVulns = securityResult
       ? securityResult.summary.critical + securityResult.summary.high
       : 0;
-    if (options.strict && (errors > 0 || criticalOrHighVulns > 0)) {
+    if (options.strict && (errors > 0 || criticalOrHighVulns > 0 || aiSdkExposure.keyExposures.length > 0)) {
       process.exit(1);
     }
   } catch (error) {

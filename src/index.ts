@@ -14,6 +14,7 @@ import { licensesCommand } from './commands/licenses.js';
 import { sbomCommand } from './commands/sbom.js';
 import { diffCommand } from './commands/diff.js';
 import { legacyApisCommand } from './commands/legacyApis.js';
+import { aiExposureCommand } from './commands/aiExposure.js';
 import { bundleCommand } from './commands/bundle.js';
 import { policyCommand } from './commands/policy.js';
 import { baselineCommand } from './commands/baseline.js';
@@ -224,6 +225,20 @@ program
   .option('--cwd <path>', 'Working directory')
   .action(async (options) => {
     await legacyApisCommand({
+      json: options.json || false,
+      html: options.html || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('ai-exposure')
+  .description('Detect direct client-side calls to AI provider SDKs and AI-provider-key-shaped literals in source')
+  .option('--json', 'Output as JSON')
+  .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await aiExposureCommand({
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
