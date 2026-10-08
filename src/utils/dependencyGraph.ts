@@ -4,6 +4,33 @@ import type { DependencyGraph, DependencyGraphNode } from '../types/dependencyGr
 import { detectPackageManager, parseLockfile } from './lockfile.js';
 import { readPackageJson, getAllDependencies } from './packageJson.js';
 import { resolveDependencyRoot } from './projectRoot.js';
+import { findWorkspacePackages, type WorkspacePackageInfo } from './workspacePackages.js';
+
+/**
+ * Cross-links a sibling monorepo workspace package as a graph node — by name, not by matching
+ * the declared range (a `workspace:*`/`workspace:^1.0.0`/plain `*` protocol reference always
+ * means "the local workspace copy", never a same-named registry package, so the package
+ * manager itself never consults the registry for it either). Shared by the yarn/pnpm/bun
+ * builders since the logic doesn't depend on any manager-specific lockfile shape.
+ */
+function ensureWorkspaceNode(
+  nodes: Map<string, DependencyGraphNode>,
+  ws: WorkspacePackageInfo,
+  onNew: (id: string, deps: Record<string, string>) => void
+): string {
+  const id = `workspace:${ws.name}`;
+  if (!nodes.has(id)) {
+    nodes.set(id, {
+      name: ws.name,
+      version: ws.version || 'workspace',
+      parents: [],
+      children: [],
+      workspace: true,
+    });
+    onNew(id, { ...ws.dependencies, ...ws.optionalDependencies });
+  }
+  return id;
+}
 
 interface NPMLockPackageRaw {
   version?: string;
@@ -232,8 +259,10 @@ function stripNpmProtocol(spec: string): string {
 }
 
 async function buildYarnGraph(cwd: string): Promise<DependencyGraph | null> {
-  const yarnLockPath = resolve(resolveDependencyRoot(cwd), 'yarn.lock');
+  const workspaceRoot = resolveDependencyRoot(cwd);
+  const yarnLockPath = resolve(workspaceRoot, 'yarn.lock');
   if (!existsSync(yarnLockPath)) return null;
+  const workspacePackages = findWorkspacePackages(workspaceRoot);
 
   const content = readFileSync(yarnLockPath, 'utf-8');
   const entries = parseYarnLockEntries(content);
@@ -263,7 +292,8 @@ async function buildYarnGraph(cwd: string): Promise<DependencyGraph | null> {
   const nodes = new Map<string, DependencyGraphNode>();
   nodes.set('', { name: '', version: '', parents: [], children: [] });
 
-  const queue: Array<{ id: string; entry: YarnEntry }> = [];
+  type QueueItem = { id: string; deps: Record<string, string> } | { id: string; entry: YarnEntry };
+  const queue: QueueItem[] = [];
   const visited = new Set<string>();
 
   const ensureNode = (entry: YarnEntry): string => {
@@ -275,6 +305,9 @@ async function buildYarnGraph(cwd: string): Promise<DependencyGraph | null> {
     return id;
   };
 
+  const ensureWsNode = (ws: WorkspacePackageInfo): string =>
+    ensureWorkspaceNode(nodes, ws, (id, deps) => queue.push({ id, deps }));
+
   const addEdge = (parentId: string, childId: string, dev?: boolean, optional?: boolean): void => {
     const parentNode = nodes.get(parentId)!;
     const childNode = nodes.get(childId)!;
@@ -285,6 +318,12 @@ async function buildYarnGraph(cwd: string): Promise<DependencyGraph | null> {
   };
 
   directDeps.forEach((dep) => {
+    const ws = workspacePackages.get(dep.name);
+    if (ws) {
+      const id = ensureWsNode(ws);
+      addEdge('', id, dep.type === 'devDependency', dep.type === 'optionalDependency');
+      return;
+    }
     const entry = resolveEntry(dep.name, dep.requestedVersion);
     if (!entry) return;
     const id = ensureNode(entry);
@@ -292,15 +331,22 @@ async function buildYarnGraph(cwd: string): Promise<DependencyGraph | null> {
   });
 
   while (queue.length > 0) {
-    const { id, entry } = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
+    const item = queue.shift()!;
+    if (visited.has(item.id)) continue;
+    visited.add(item.id);
 
-    Object.entries(entry.dependencies).forEach(([depName, depRange]) => {
+    const depsToResolve = 'entry' in item ? item.entry.dependencies : item.deps;
+    Object.entries(depsToResolve).forEach(([depName, depRange]) => {
+      const ws = workspacePackages.get(depName);
+      if (ws) {
+        const childId = ensureWsNode(ws);
+        addEdge(item.id, childId);
+        return;
+      }
       const childEntry = resolveEntry(depName, depRange);
       if (!childEntry) return;
       const childId = ensureNode(childEntry);
-      addEdge(id, childId);
+      addEdge(item.id, childId);
     });
   }
 
@@ -432,8 +478,10 @@ function parsePnpmRootDependencies(content: string): Map<string, string> {
 }
 
 async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
-  const pnpmLockPath = resolve(resolveDependencyRoot(cwd), 'pnpm-lock.yaml');
+  const workspaceRoot = resolveDependencyRoot(cwd);
+  const pnpmLockPath = resolve(workspaceRoot, 'pnpm-lock.yaml');
   if (!existsSync(pnpmLockPath)) return null;
+  const workspacePackages = findWorkspacePackages(workspaceRoot);
 
   const content = readFileSync(pnpmLockPath, 'utf-8');
   const packages = parsePnpmPackages(content);
@@ -463,7 +511,8 @@ async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
   const nodes = new Map<string, DependencyGraphNode>();
   nodes.set('', { name: '', version: '', parents: [], children: [] });
 
-  const queue: Array<{ id: string; entry: PnpmPackageEntry }> = [];
+  type QueueItem = { id: string; deps: Record<string, string> } | { id: string; entry: PnpmPackageEntry };
+  const queue: QueueItem[] = [];
   const visited = new Set<string>();
 
   const ensureNode = (entry: PnpmPackageEntry): string => {
@@ -473,6 +522,9 @@ async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
     }
     return entry.key;
   };
+
+  const ensureWsNode = (ws: WorkspacePackageInfo): string =>
+    ensureWorkspaceNode(nodes, ws, (id, deps) => queue.push({ id, deps }));
 
   const addEdge = (parentId: string, childId: string, dev?: boolean, optional?: boolean): void => {
     const parentNode = nodes.get(parentId)!;
@@ -484,6 +536,12 @@ async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
   };
 
   directDeps.forEach((dep) => {
+    const ws = workspacePackages.get(dep.name);
+    if (ws) {
+      const id = ensureWsNode(ws);
+      addEdge('', id, dep.type === 'devDependency', dep.type === 'optionalDependency');
+      return;
+    }
     const versionSpec = rootDeps.get(dep.name);
     const entry = versionSpec
       ? resolveEntry(dep.name, versionSpec)
@@ -494,15 +552,22 @@ async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
   });
 
   while (queue.length > 0) {
-    const { id, entry } = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
+    const item = queue.shift()!;
+    if (visited.has(item.id)) continue;
+    visited.add(item.id);
 
-    Object.entries(entry.dependencies).forEach(([depName, depVersionSpec]) => {
+    const depsToResolve = 'entry' in item ? item.entry.dependencies : item.deps;
+    Object.entries(depsToResolve).forEach(([depName, depVersionSpec]) => {
+      const ws = workspacePackages.get(depName);
+      if (ws) {
+        const childId = ensureWsNode(ws);
+        addEdge(item.id, childId);
+        return;
+      }
       const childEntry = resolveEntry(depName, depVersionSpec);
       if (!childEntry) return;
       const childId = ensureNode(childEntry);
-      addEdge(id, childId);
+      addEdge(item.id, childId);
     });
   }
 
@@ -575,8 +640,10 @@ function parseBunPackages(raw: string): { entries: BunPackageEntry[]; rootDeps: 
 }
 
 async function buildBunGraph(cwd: string): Promise<DependencyGraph | null> {
-  const bunLockPath = resolve(resolveDependencyRoot(cwd), 'bun.lock');
+  const workspaceRoot = resolveDependencyRoot(cwd);
+  const bunLockPath = resolve(workspaceRoot, 'bun.lock');
   if (!existsSync(bunLockPath)) return null;
+  const workspacePackages = findWorkspacePackages(workspaceRoot);
 
   let parsed: { entries: BunPackageEntry[]; rootDeps: Record<string, string> };
   try {
@@ -601,7 +668,8 @@ async function buildBunGraph(cwd: string): Promise<DependencyGraph | null> {
   const nodes = new Map<string, DependencyGraphNode>();
   nodes.set('', { name: '', version: '', parents: [], children: [] });
 
-  const queue: Array<{ id: string; entry: BunPackageEntry }> = [];
+  type QueueItem = { id: string; deps: Record<string, string> } | { id: string; entry: BunPackageEntry };
+  const queue: QueueItem[] = [];
   const visited = new Set<string>();
 
   const ensureNode = (entry: BunPackageEntry): string => {
@@ -611,6 +679,9 @@ async function buildBunGraph(cwd: string): Promise<DependencyGraph | null> {
     }
     return entry.key;
   };
+
+  const ensureWsNode = (ws: WorkspacePackageInfo): string =>
+    ensureWorkspaceNode(nodes, ws, (id, deps) => queue.push({ id, deps }));
 
   const addEdge = (parentId: string, childId: string, dev?: boolean, optional?: boolean): void => {
     const parentNode = nodes.get(parentId)!;
@@ -622,6 +693,12 @@ async function buildBunGraph(cwd: string): Promise<DependencyGraph | null> {
   };
 
   directDeps.forEach((dep) => {
+    const ws = workspacePackages.get(dep.name);
+    if (ws) {
+      const id = ensureWsNode(ws);
+      addEdge('', id, dep.type === 'devDependency', dep.type === 'optionalDependency');
+      return;
+    }
     const inRootDeps = Object.prototype.hasOwnProperty.call(rootDeps, dep.name);
     if (!inRootDeps && Object.keys(rootDeps).length > 0) return;
     const entry = resolveEntry(dep.name);
@@ -631,15 +708,22 @@ async function buildBunGraph(cwd: string): Promise<DependencyGraph | null> {
   });
 
   while (queue.length > 0) {
-    const { id, entry } = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
+    const item = queue.shift()!;
+    if (visited.has(item.id)) continue;
+    visited.add(item.id);
 
-    Object.entries(entry.dependencies).forEach(([depName]) => {
+    const depsToResolve = 'entry' in item ? item.entry.dependencies : item.deps;
+    Object.entries(depsToResolve).forEach(([depName]) => {
+      const ws = workspacePackages.get(depName);
+      if (ws) {
+        const childId = ensureWsNode(ws);
+        addEdge(item.id, childId);
+        return;
+      }
       const childEntry = resolveEntry(depName);
       if (!childEntry) return;
       const childId = ensureNode(childEntry);
-      addEdge(id, childId);
+      addEdge(item.id, childId);
     });
   }
 

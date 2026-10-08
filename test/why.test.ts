@@ -99,3 +99,30 @@ test('whyCommand - no project/lockfile at all reports an error and exits 1', asy
     cleanup(dir);
   }
 });
+
+test('whyCommand - traces a transitive dependency reached only through a sibling workspace package', async () => {
+  const root = makeTempDir();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'monorepo-root', private: true, workspaces: ['packages/*'] }));
+    writeFileSync(join(sharedDir, 'package.json'), JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } }));
+    writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', dependencies: { '@acme/shared': 'workspace:^1.0.0' } }));
+    writeFileSync(
+      join(root, 'yarn.lock'),
+      `left-pad@^1.0.0:\n  version "1.3.0"\n  resolved "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz"\n`
+    );
+
+    const { output } = await captureStdout(() => whyCommand('left-pad', { cwd: appDir, json: true }));
+    const result = JSON.parse(output);
+
+    assert.equal(result.occurrences.length, 1);
+    assert.equal(result.occurrences[0].paths[0].join(' > '), '@acme/shared > left-pad');
+  } finally {
+    cleanup(root);
+  }
+});

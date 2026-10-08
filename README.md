@@ -468,10 +468,15 @@ package).
   not a live SDK/toolchain installation check — they can't see a toolchain declared some other
   way (e.g. a custom `buildSrc` convention plugin).
 - Full transitive dependency resolution (`why`/`tree`/`graph`/`security`/`licenses`/`policy`) is
-  complete for npm lockfiles; yarn/pnpm/bun show direct dependencies only today.
+  complete for npm, yarn, pnpm, and bun alike — each lockfile's own per-package dependency
+  data is parsed and walked from the root's direct dependencies.
 - Monorepo support (npm/yarn/pnpm/bun workspaces) resolves the correct lockfile/`node_modules`
-  root when run from a workspace package, but doesn't yet aggregate or cross-check multiple
-  workspace packages in one run.
+  root when run from a workspace package, and a workspace package that depends on a sibling
+  workspace package (`"@acme/shared": "workspace:^1.0.0"`) has that sibling cross-linked into
+  the same dependency graph for yarn/pnpm/bun too — so a vulnerable package reachable only
+  through a local workspace dependency is no longer invisible to `why`/`security`/etc. A single
+  run still scans the one workspace package it's invoked against, not every workspace package
+  in the monorepo at once.
 - Bun lockfile parsing is less battle-tested than npm/yarn/pnpm.
 - The Android 16KB page-size check only inspects prebuilt `.so` files already present in
   `node_modules` (loose or `.aar`/`.jar`-packaged) — a package that compiles native code during

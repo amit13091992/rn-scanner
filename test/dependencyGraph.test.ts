@@ -391,3 +391,124 @@ describe('buildDependencyGraph (yarn workspace)', () => {
     ok(paths.length > 0);
   });
 });
+
+describe('buildDependencyGraph (workspace package cross-linking)', () => {
+  test('yarn: a workspace package depending on a sibling workspace package resolves it as a local node, not via the lockfile', async () => {
+    const root = makeTempProject();
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'monorepo-root', private: true, workspaces: ['packages/*'] })
+    );
+    writeFileSync(
+      join(sharedDir, 'package.json'),
+      JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } })
+    );
+    writeFileSync(
+      join(appDir, 'package.json'),
+      JSON.stringify({ name: 'mobile-app', dependencies: { '@acme/shared': 'workspace:^1.0.0' } })
+    );
+    writeFileSync(
+      join(root, 'yarn.lock'),
+      `left-pad@^1.0.0:\n  version "1.3.0"\n  resolved "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz"\n`
+    );
+
+    const graph = await buildDependencyGraph(appDir);
+    ok(graph);
+    strictEqual(graph!.manager, 'yarn');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const sharedNode = graph!.nodes.get('workspace:@acme/shared');
+    ok(sharedNode, 'expected the sibling workspace package to be linked as a node');
+    strictEqual(sharedNode!.workspace, true);
+
+    const paths = findPathsToPackage(graph!, 'left-pad');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), '@acme/shared > left-pad');
+  });
+
+  test('pnpm: a workspace package depending on a sibling workspace package resolves it as a local node', async () => {
+    const root = makeTempProject();
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'monorepo-root', private: true })
+    );
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), `packages:\n  - 'packages/*'\n`);
+    writeFileSync(
+      join(sharedDir, 'package.json'),
+      JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } })
+    );
+    writeFileSync(
+      join(appDir, 'package.json'),
+      JSON.stringify({ name: 'mobile-app', dependencies: { '@acme/shared': 'workspace:^1.0.0' } })
+    );
+    writeFileSync(
+      join(root, 'pnpm-lock.yaml'),
+      `lockfileVersion: 5.4\n\npackages:\n  /left-pad@1.3.0:\n    version: 1.3.0\n    dev: false\n`
+    );
+
+    const graph = await buildDependencyGraph(appDir);
+    ok(graph);
+    strictEqual(graph!.manager, 'pnpm');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const sharedNode = graph!.nodes.get('workspace:@acme/shared');
+    ok(sharedNode, 'expected the sibling workspace package to be linked as a node');
+
+    const paths = findPathsToPackage(graph!, 'left-pad');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), '@acme/shared > left-pad');
+  });
+
+  test('bun: a workspace package depending on a sibling workspace package resolves it as a local node', async () => {
+    const root = makeTempProject();
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'monorepo-root', private: true, workspaces: ['packages/*'] })
+    );
+    writeFileSync(
+      join(sharedDir, 'package.json'),
+      JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } })
+    );
+    writeFileSync(
+      join(appDir, 'package.json'),
+      JSON.stringify({ name: 'mobile-app', dependencies: { '@acme/shared': 'workspace:^1.0.0' } })
+    );
+    const bunLockContent = JSON.stringify({
+      lockfileVersion: 0,
+      workspaces: {
+        '': { name: 'monorepo-root' },
+      },
+      packages: {
+        'left-pad': ['left-pad@1.3.0', '', {}, 'sha512-abc'],
+      },
+    });
+    writeFileSync(join(root, 'bun.lock'), bunLockContent);
+
+    const graph = await buildDependencyGraph(appDir);
+    ok(graph);
+    strictEqual(graph!.manager, 'bun');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const sharedNode = graph!.nodes.get('workspace:@acme/shared');
+    ok(sharedNode, 'expected the sibling workspace package to be linked as a node');
+
+    const paths = findPathsToPackage(graph!, 'left-pad');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), '@acme/shared > left-pad');
+  });
+});
