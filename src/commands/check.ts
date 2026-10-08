@@ -34,6 +34,7 @@ import {
 import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
 import { computeHealthScore } from '../utils/healthScore.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
 
 function installCommand(manager: string, packageName: string, range: string): string {
   const spec = `${packageName}@${range}`;
@@ -57,10 +58,63 @@ export interface CheckOptions {
   /** Security scanning is on by default; pass false (--no-security) to skip the OSV.dev network call. */
   security?: boolean;
   profile?: boolean;
+  /** Run the full check against every workspace package in the monorepo, not just `cwd`, and
+   *  aggregate the results into one report. A no-op (same as omitting it) when `cwd` isn't
+   *  inside a workspace. */
+  allWorkspaces?: boolean;
+}
+
+async function runAcrossWorkspaces(cwd: string, options: CheckOptions): Promise<void> {
+  const jsonMode = !!options.json || !!options.html;
+  const targets = listWorkspaceTargets(cwd);
+
+  if (targets.length === 0) {
+    return checkCommand({ ...options, allWorkspaces: false });
+  }
+
+  if (!jsonMode) {
+    printHeader('RN Deps Scanner (all workspaces)');
+  }
+
+  let anyExit = false;
+  const perPackageResults: Array<Record<string, unknown>> = [];
+
+  for (const target of targets) {
+    if (!jsonMode) {
+      printSection(`Workspace package: ${target.name}`);
+    }
+    const { output, exitCode } = await runCapturingExit(() =>
+      checkCommand({ ...options, cwd: target.dir, allWorkspaces: false, json: jsonMode, html: false })
+    );
+    if (exitCode) anyExit = true;
+
+    if (jsonMode) {
+      try {
+        perPackageResults.push({ ...JSON.parse(output), package: target.name, dir: target.dir });
+      } catch {
+        perPackageResults.push({ package: target.name, dir: target.dir, error: 'Could not parse result' });
+      }
+    } else {
+      console.log(output.replace(/\n$/, ''));
+    }
+  }
+
+  if (jsonMode) {
+    emitStructuredOutput({ workspaces: perPackageResults }, 'RN Deps Scanner Report (all workspaces)', options);
+  }
+
+  if (anyExit) {
+    process.exit(1);
+  }
 }
 
 export async function checkCommand(options: CheckOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
+
+  if (options.allWorkspaces) {
+    return runAcrossWorkspaces(cwd, options);
+  }
+
   const profiler = new Profiler(!!options.profile);
   // Set inside the try block and read after it closes, so a non-zero exit is decided outside
   // the try/catch — calling `process.exit` from within `try` would otherwise be caught by this

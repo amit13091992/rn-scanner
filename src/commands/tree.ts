@@ -1,13 +1,16 @@
 import { buildDependencyGraph, findDuplicateVersionPaths } from '../utils/dependencyGraph.js';
 import type { DependencyGraph } from '../types/dependencyGraph.js';
-import { printHeader, printError, printWarning, printInfo } from '../utils/terminal.js';
+import { printHeader, printSection, printError, printWarning, printInfo } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
 
 export interface TreeOptions {
   json?: boolean;
   html?: HtmlOption;
   cwd?: string;
   duplicatesOnly?: boolean; // corresponds to a future `--duplicates` CLI flag
+  /** Print/export the tree for every workspace package in the monorepo, not just `cwd`. */
+  allWorkspaces?: boolean;
 }
 
 const MAX_DEPTH = 10;
@@ -145,9 +148,62 @@ function findFirstNodeIdForPackage(graph: DependencyGraph, packageName: string):
   return null;
 }
 
+async function runAcrossWorkspaces(packageName: string | undefined, cwd: string, options: TreeOptions): Promise<void> {
+  const jsonMode = !!options.json || !!options.html;
+  const targets = listWorkspaceTargets(cwd);
+
+  if (targets.length === 0) {
+    return treeCommand(packageName, { ...options, allWorkspaces: false });
+  }
+
+  if (!jsonMode) {
+    printHeader(packageName ? `Dependency Tree: ${packageName} (all workspaces)` : 'Dependency Tree (all workspaces)');
+  }
+
+  let anyExit = false;
+  const perPackageResults: Array<Record<string, unknown>> = [];
+
+  for (const target of targets) {
+    if (!jsonMode) {
+      printSection(`Workspace package: ${target.name}`);
+    }
+    const { output, exitCode } = await runCapturingExit(() =>
+      treeCommand(packageName, { ...options, cwd: target.dir, allWorkspaces: false, json: jsonMode, html: false })
+    );
+    if (exitCode) anyExit = true;
+
+    if (jsonMode) {
+      try {
+        perPackageResults.push({ ...JSON.parse(output), package: target.name, dir: target.dir });
+      } catch {
+        perPackageResults.push({ package: target.name, dir: target.dir, error: 'Could not parse result' });
+      }
+    } else {
+      console.log(output.replace(/\n$/, ''));
+    }
+  }
+
+  if (jsonMode) {
+    emitStructuredOutput({ workspaces: perPackageResults }, 'Dependency Tree (all workspaces)', options);
+  }
+
+  if (anyExit) {
+    process.exit(1);
+  }
+}
+
 export async function treeCommand(packageName?: string, options: TreeOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
   const jsonMode = !!options.json || !!options.html;
+
+  if (options.allWorkspaces) {
+    return runAcrossWorkspaces(packageName, cwd, options);
+  }
+
+  // Set inside the try block and read after it closes — see `commands/why.ts` for the same
+  // pattern and rationale (a stubbed `process.exit`, as used by `runAcrossWorkspaces` above
+  // and by tests, would otherwise be caught by this function's own `catch` and double-print).
+  let shouldExit = false;
 
   try {
     const graph = await buildDependencyGraph(cwd);
@@ -158,48 +214,51 @@ export async function treeCommand(packageName?: string, options: TreeOptions = {
       } else {
         printError('No project or lockfile found');
       }
-      process.exit(1);
-    }
-
-    let rootId = graph.root;
-    if (packageName) {
-      const found = findFirstNodeIdForPackage(graph, packageName);
-      if (!found) {
-        if (jsonMode) {
-          emitStructuredOutput({ error: `"${packageName}" not found in dependency graph` }, 'Dependency Tree', options);
+      shouldExit = true;
+    } else {
+      let rootId = graph.root;
+      let notFound = false;
+      if (packageName) {
+        const found = findFirstNodeIdForPackage(graph, packageName);
+        if (!found) {
+          if (jsonMode) {
+            emitStructuredOutput({ error: `"${packageName}" not found in dependency graph` }, 'Dependency Tree', options);
+          } else {
+            printInfo(`"${packageName}" was not found in the dependency graph.`);
+          }
+          notFound = true;
         } else {
-          printInfo(`"${packageName}" was not found in the dependency graph.`);
+          rootId = found;
         }
-        return;
       }
-      rootId = found;
+
+      if (!notFound) {
+        let duplicateNames: Set<string> | undefined;
+        if (options.duplicatesOnly) {
+          duplicateNames = new Set(findDuplicateVersionPaths(graph).keys());
+        }
+
+        if (jsonMode) {
+          const startDepth = packageName ? 0 : 0;
+          const tree = buildJsonSubtree(graph, rootId, startDepth, new Set(), new Set(), duplicateNames);
+          emitStructuredOutput(
+            { manager: graph.manager, hierarchyComplete: graph.hierarchyComplete, tree },
+            'Dependency Tree',
+            options
+          );
+        } else {
+          printHeader(packageName ? `Dependency Tree: ${packageName}` : 'Dependency Tree');
+
+          if (!graph.hierarchyComplete) {
+            printWarning(
+              `Dependency hierarchy for "${graph.manager}" only shows direct dependencies (not full transitive resolution).`
+            );
+          }
+
+          printSubtree(graph, rootId, '', true, 0, new Set(), new Set(), duplicateNames);
+        }
+      }
     }
-
-    let duplicateNames: Set<string> | undefined;
-    if (options.duplicatesOnly) {
-      duplicateNames = new Set(findDuplicateVersionPaths(graph).keys());
-    }
-
-    if (jsonMode) {
-      const startDepth = packageName ? 0 : 0;
-      const tree = buildJsonSubtree(graph, rootId, startDepth, new Set(), new Set(), duplicateNames);
-      emitStructuredOutput(
-        { manager: graph.manager, hierarchyComplete: graph.hierarchyComplete, tree },
-        'Dependency Tree',
-        options
-      );
-      return;
-    }
-
-    printHeader(packageName ? `Dependency Tree: ${packageName}` : 'Dependency Tree');
-
-    if (!graph.hierarchyComplete) {
-      printWarning(
-        `Dependency hierarchy for "${graph.manager}" only shows direct dependencies (not full transitive resolution).`
-      );
-    }
-
-    printSubtree(graph, rootId, '', true, 0, new Set(), new Set(), duplicateNames);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {
@@ -207,6 +266,11 @@ export async function treeCommand(packageName?: string, options: TreeOptions = {
     } else {
       printError(`Error: ${message}`);
     }
+    process.exit(1);
+    return;
+  }
+
+  if (shouldExit) {
     process.exit(1);
   }
 }

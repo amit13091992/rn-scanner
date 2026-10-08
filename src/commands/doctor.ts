@@ -21,6 +21,7 @@ import {
   printProfile,
 } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
 
 function printEnvironmentRequirements(requirements: EnvironmentRequirement[]): void {
   for (const req of requirements) {
@@ -48,11 +49,63 @@ export interface DoctorOptions {
   cwd?: string;
   ipa?: string;
   profile?: boolean;
+  /** Run the environment check against every workspace package in the monorepo, not just
+   *  `cwd`, and aggregate the results into one report. */
+  allWorkspaces?: boolean;
+}
+
+async function runAcrossWorkspaces(cwd: string, options: DoctorOptions): Promise<void> {
+  const jsonMode = !!options.json || !!options.html;
+  const targets = listWorkspaceTargets(cwd);
+
+  if (targets.length === 0) {
+    return doctorCommand({ ...options, allWorkspaces: false });
+  }
+
+  if (!jsonMode) {
+    printHeader('React Native Environment (all workspaces)');
+  }
+
+  let anyExit = false;
+  const perPackageResults: Array<Record<string, unknown>> = [];
+
+  for (const target of targets) {
+    if (!jsonMode) {
+      printSection(`Workspace package: ${target.name}`);
+    }
+    const { output, exitCode } = await runCapturingExit(() =>
+      doctorCommand({ ...options, cwd: target.dir, allWorkspaces: false, json: jsonMode, html: false })
+    );
+    if (exitCode) anyExit = true;
+
+    if (jsonMode) {
+      try {
+        perPackageResults.push({ ...JSON.parse(output), package: target.name, dir: target.dir });
+      } catch {
+        perPackageResults.push({ package: target.name, dir: target.dir, error: 'Could not parse result' });
+      }
+    } else {
+      console.log(output.replace(/\n$/, ''));
+    }
+  }
+
+  if (jsonMode) {
+    emitStructuredOutput({ workspaces: perPackageResults }, 'Doctor Report (all workspaces)', options);
+  }
+
+  if (anyExit) {
+    process.exit(1);
+  }
 }
 
 export async function doctorCommand(options: DoctorOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
   const jsonMode = !!options.json || !!options.html;
+
+  if (options.allWorkspaces) {
+    return runAcrossWorkspaces(cwd, options);
+  }
+
   const profiler = new Profiler(!!options.profile);
 
   try {

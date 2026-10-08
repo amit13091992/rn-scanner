@@ -61,6 +61,7 @@ program
   .option('--cwd <path>', 'Working directory')
   .option('--no-security', 'Skip checking for known vulnerabilities via OSV.dev (enabled by default, requires network)')
   .option('--profile', 'Print a per-step timing breakdown of the scan itself')
+  .option('--all-workspaces', 'Check every workspace package in the monorepo, not just --cwd, and aggregate the results')
   .action(async (options) => {
     await checkCommand({
       json: options.json || false,
@@ -69,6 +70,7 @@ program
       cwd: options.cwd || process.cwd(),
       security: options.security !== false,
       profile: options.profile || false,
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 
@@ -98,6 +100,7 @@ program
   .option('--cwd <path>', 'Working directory')
   .option('--ipa <path>', 'Path to a built .ipa/.xcarchive to check for dSYM presence')
   .option('--profile', 'Print a per-step timing breakdown of the scan itself')
+  .option('--all-workspaces', 'Check every workspace package in the monorepo, not just --cwd, and aggregate the results')
   .action(async (options) => {
     await doctorCommand({
       json: options.json || false,
@@ -105,6 +108,7 @@ program
       cwd: options.cwd || process.cwd(),
       ipa: options.ipa || undefined,
       profile: options.profile || false,
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 
@@ -114,11 +118,13 @@ program
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
+  .option('--all-workspaces', 'Trace the package across every workspace package in the monorepo, not just --cwd')
   .action(async (packageName, options) => {
     await whyCommand(packageName, {
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 
@@ -405,12 +411,14 @@ program
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--duplicates', 'Only show branches containing duplicate package versions')
   .option('--cwd <path>', 'Working directory')
+  .option('--all-workspaces', 'Print the tree for every workspace package in the monorepo, not just --cwd')
   .action(async (packageName, options) => {
     await treeCommand(packageName, {
       json: options.json || false,
       html: options.html || false,
       duplicatesOnly: options.duplicates || false,
       cwd: options.cwd || process.cwd(),
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 

@@ -126,3 +126,47 @@ test('whyCommand - traces a transitive dependency reached only through a sibling
     cleanup(root);
   }
 });
+
+test('whyCommand - --all-workspaces aggregates results across every workspace package', async () => {
+  const root = makeTempDir();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'monorepo-root', private: true, workspaces: ['packages/*'] }));
+    writeFileSync(join(sharedDir, 'package.json'), JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'left-pad': '^1.0.0' } }));
+    writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', dependencies: { '@acme/shared': 'workspace:^1.0.0' } }));
+    writeFileSync(join(root, 'yarn.lock'), `left-pad@^1.0.0:\n  version "1.3.0"\n  resolved "https://registry.yarnpkg.com/left-pad/-/left-pad-1.3.0.tgz"\n`);
+
+    const { output } = await captureStdout(() => whyCommand('left-pad', { cwd: appDir, json: true, allWorkspaces: true }));
+    const result = JSON.parse(output);
+
+    assert.equal(result.workspaces.length, 2);
+    const shared = result.workspaces.find((w: { package: string }) => w.package === '@acme/shared');
+    const mobileApp = result.workspaces.find((w: { package: string }) => w.package === 'mobile-app');
+    assert.equal(shared.occurrences[0].paths[0].join(' > '), 'left-pad');
+    assert.equal(mobileApp.occurrences[0].paths[0].join(' > '), '@acme/shared > left-pad');
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('whyCommand - --all-workspaces outside a workspace falls back to a plain single-project scan', async () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'single-app', dependencies: { 'left-pad': '^1.0.0' } }));
+    writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/left-pad': { version: '1.3.0' } } }));
+
+    const { output } = await captureStdout(() => whyCommand('left-pad', { cwd: dir, json: true, allWorkspaces: true }));
+    const result = JSON.parse(output);
+
+    assert.equal(result.package, 'left-pad');
+    assert.ok(result.occurrences);
+    assert.equal(result.workspaces, undefined);
+  } finally {
+    cleanup(dir);
+  }
+});

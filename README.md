@@ -98,7 +98,7 @@ otherwise, and every command with `--json` also supports `--html [path]` — see
 ### `check` (default command)
 
 ```bash
-rn-dep-scanner [check] [--json] [--html [path]] [--strict] [--cwd <path>] [--no-security] [--profile]
+rn-dep-scanner [check] [--json] [--html [path]] [--strict] [--cwd <path>] [--no-security] [--profile] [--all-workspaces]
 ```
 
 The main scan. Reads `package.json` + your lockfile and reports, against the detected
@@ -114,12 +114,14 @@ React/React Native versions:
   `package.json`'s direct entries — on by default, pass `--no-security` to skip (no network call)
 
 Reports a 0–100 health score. `--strict` exits 1 on any error-level finding (including a
-critical/high vulnerability). `--profile` prints a per-step timing breakdown of the scan itself.
+critical/high vulnerability, or an unsupported New Architecture package once React Native's
+legacy bridge is removed). `--profile` prints a per-step timing breakdown of the scan itself.
+`--all-workspaces` checks every workspace package in the monorepo and aggregates the results.
 
 ### `doctor`
 
 ```bash
-rn-dep-scanner doctor [--json] [--html [path]] [--cwd <path>] [--ipa <path>] [--profile]
+rn-dep-scanner doctor [--json] [--html [path]] [--cwd <path>] [--ipa <path>] [--profile] [--all-workspaces]
 ```
 
 Checks whether your machine/project is actually ready to *build*, separately from whether your
@@ -136,6 +138,7 @@ gaps —
 
 Produces an overall `READY` / `WARN` / `BLOCKED` verdict. `--ipa <path>` opts into an
 informational dSYM-presence check for a built `.ipa`/`.xcarchive` (doesn't affect the verdict).
+`--all-workspaces` checks every workspace package in the monorepo and aggregates the results.
 
 ### `outdated`
 
@@ -185,23 +188,25 @@ RN versions' Node/Android/iOS baselines with no project scan needed. No `--cwd`.
 ### `why <package>`
 
 ```bash
-rn-dep-scanner why <package> [--json] [--html [path]] [--cwd <path>]
+rn-dep-scanner why <package> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Traces every install path and resolved version a package appears at in your dependency tree.
+`--all-workspaces` traces it across every workspace package in the monorepo.
 
 ### `tree [package]`
 
 ```bash
-rn-dep-scanner tree [package] [--duplicates] [--json] [--html [path]] [--cwd <path>]
+rn-dep-scanner tree [package] [--duplicates] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Prints the full dependency tree, or the subtree rooted at `package` if given. `--duplicates`
-shows only branches where a package resolves to more than one version.
+shows only branches where a package resolves to more than one version. `--all-workspaces`
+prints the tree for every workspace package in the monorepo.
 
-> Full transitive hierarchy (`why`/`tree`/`graph`/`security`/`licenses`/`policy`) is supported
-> for **npm** lockfiles today. Yarn/pnpm/bun show direct dependencies only, with a warning
-> printed when this applies — see [Known limitations](#known-limitations).
+Full transitive hierarchy (`why`/`tree`/`graph`/`security`/`licenses`/`policy`) is supported for
+npm, yarn, pnpm, and bun alike, including sibling workspace packages cross-linked into the same
+graph.
 
 ### `graph`
 
@@ -499,9 +504,11 @@ package).
   workspace package (`"@acme/shared": "workspace:^1.0.0"`) has that sibling cross-linked into
   the same dependency graph for yarn/pnpm/bun too — so a vulnerable package reachable only
   through a local workspace dependency is no longer invisible to `why`/`security`/etc.
-  `security`/`licenses`/`policy` additionally support `--all-workspaces` to scan every
-  workspace package in one aggregated run instead of just `--cwd`; `check`/`doctor`/`why`/`tree`
-  don't have that flag yet — run them per workspace package directly.
+  `check`/`doctor`/`why`/`tree`/`security`/`licenses`/`policy` all support `--all-workspaces` to
+  run against every workspace package in one aggregated run instead of just `--cwd` (a no-op
+  outside a workspace). `--all-workspaces` combined with `--html <path>` isn't supported for
+  `check`/`doctor`/`why`/`tree` — each per-package sub-scan is captured as plain JSON internally
+  regardless of the outer `--html`, so only the final combined result respects it.
 - Bun lockfile parsing is less battle-tested than npm/yarn/pnpm.
 - The Android 16KB page-size check only inspects prebuilt `.so` files already present in
   `node_modules` (loose or `.aar`/`.jar`-packaged) — a package that compiles native code during
