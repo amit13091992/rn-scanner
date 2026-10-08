@@ -119,3 +119,46 @@ test('loadConfig - a top-level array degrades to empty config and reports why', 
     cleanup(dir);
   }
 });
+
+test('loadConfig - reads valid customCompatibilityRules', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(
+      join(dir, '.rn-dep-scanner.json'),
+      JSON.stringify({
+        customCompatibilityRules: [
+          { package: 'my-internal-fork', version: '1.x', reactNative: '>=0.75.0' },
+        ],
+      })
+    );
+    const { config, warnings } = loadConfig(dir);
+    assert.deepEqual(config.customCompatibilityRules, [
+      { package: 'my-internal-fork', version: '1.x', reactNative: '>=0.75.0', react: undefined, node: undefined },
+    ]);
+    assert.deepEqual(warnings, []);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('loadConfig - skips an invalid customCompatibilityRules entry with a warning, keeps the valid ones', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(
+      join(dir, '.rn-dep-scanner.json'),
+      JSON.stringify({
+        customCompatibilityRules: [
+          { package: 'good-pkg', version: '1.x' },
+          { package: 'bad-pkg' },
+          'not-an-object',
+        ],
+      })
+    );
+    const { config, warnings } = loadConfig(dir);
+    assert.equal(config.customCompatibilityRules?.length, 1);
+    assert.equal(config.customCompatibilityRules?.[0]?.package, 'good-pkg');
+    assert.equal(warnings.length, 2);
+  } finally {
+    cleanup(dir);
+  }
+});

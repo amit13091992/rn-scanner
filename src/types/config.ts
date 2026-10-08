@@ -1,4 +1,11 @@
+import type { CompatibilityRule } from './dependency.js';
+
 export interface RnDepScannerConfig {
+  /** Project-specific compatibility rules, same shape as the curated entries in
+   *  `data/compatibility.ts` (package/version line + optional reactNative/react range). Checked
+   *  in addition to the curated rules, not instead of them — useful for an internal fork or an
+   *  unreleased package this project depends on that the curated data can't know about. */
+  customCompatibilityRules?: CompatibilityRule[];
   /** Package names to exclude entirely from compatibility/breaking-change/New Architecture/deprecated/security output. */
   ignorePackages?: string[];
   /** Specific OSV/GHSA/CVE IDs to suppress from --security output even if a flagged package isn't otherwise ignored (accepted-risk vulnerabilities). */

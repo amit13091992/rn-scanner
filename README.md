@@ -140,11 +140,14 @@ informational dSYM-presence check for a built `.ipa`/`.xcarchive` (doesn't affec
 ### `outdated`
 
 ```bash
-rn-dep-scanner outdated [--major-only] [--json] [--html [path]] [--cwd <path>]
+rn-dep-scanner outdated [--major-only] [--recommend] [--json] [--html [path]] [--cwd <path>]
 ```
 
 Lists available updates for your direct dependencies, grouped by major/minor/patch severity.
-`--major-only` shows just the major-version bumps.
+`--major-only` shows just the major-version bumps. `--recommend` resolves a React-Native-compatible
+recommended version per package (via `data/compatibility.ts`) instead of always pointing at npm's
+absolute latest — useful when the newest major of a package requires a React Native version your
+project hasn't reached yet.
 
 ### `upgrade --to <version>`
 
@@ -417,7 +420,10 @@ default, each is only an example of the shape:
   "ignoreVulnerabilities": ["GHSA-xxxx-xxxx-xxxx"],
   "licenseDenylist": ["GPL-3.0-only"],
   "bannedPackages": ["some-vendor-package"],
-  "maxVulnerabilitySeverity": "high"
+  "maxVulnerabilitySeverity": "high",
+  "customCompatibilityRules": [
+    { "package": "my-internal-fork", "version": "1.x", "reactNative": ">=0.75.0" }
+  ]
 }
 ```
 
@@ -428,6 +434,7 @@ default, each is only an example of the shape:
 | `licenseDenylist` | `licenses`, `policy` | [SPDX license identifiers](https://spdx.org/licenses/) to flag if found on any installed package. There is no built-in denylist — you decide which licenses your org disallows. License strings are matched as read from each package's own `package.json` (not normalized against the SPDX list), so use the identifier as your ecosystem's packages actually declare it. |
 | `bannedPackages` | `policy` | Package names to fail on regardless of license or vulnerabilities (e.g. an internally-disallowed vendor SDK). |
 | `maxVulnerabilitySeverity` | `policy` | One of `"critical" \| "high" \| "moderate" \| "low"` — `policy` fails if any found vulnerability meets or exceeds this severity. |
+| `customCompatibilityRules` | `check` | Project-specific compatibility rules, same shape as the curated entries in `data/compatibility.ts` (`package`, `version` line, optional `reactNative`/`react`/`node` ranges). Checked in addition to the curated rules — for an internal fork or an unreleased dependency the curated data can't know about. |
 
 ## Output formats (`--json` / `--html`)
 

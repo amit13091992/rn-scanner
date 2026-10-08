@@ -123,7 +123,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       }
     }
     const compatibilityResults = await profiler.time('analyzeAllDependencies', () =>
-      analyzeAllDependencies(dependencies, rnInfo.version, rnInfo.react)
+      analyzeAllDependencies(dependencies, rnInfo.version, rnInfo.react, config.customCompatibilityRules ?? [])
     );
     const breakingChangesResults = await profiler.time('analyzeBreakingChanges', () =>
       analyzeBreakingChanges(dependencies)
@@ -577,11 +577,14 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
               results: [],
               summary: { critical: 0, high: 0, moderate: 0, low: 0, unknown: 0 },
             },
-        ...(ignoredPackages.length > 0 || configWarnings.length > 0
+        ...(ignoredPackages.length > 0 || configWarnings.length > 0 || (config.customCompatibilityRules?.length ?? 0) > 0
           ? {
               config: {
                 ...(ignoredPackages.length > 0
                   ? { ignoredPackages: allDependencies.filter((d) => ignoredPackages.includes(d.name)).map((d) => d.name) }
+                  : {}),
+                ...((config.customCompatibilityRules?.length ?? 0) > 0
+                  ? { customCompatibilityRules: config.customCompatibilityRules }
                   : {}),
                 ...(configWarnings.length > 0 ? { warnings: configWarnings } : {}),
               },

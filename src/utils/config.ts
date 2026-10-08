@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RnDepScannerConfig } from '../types/config.js';
+import type { CompatibilityRule } from '../types/dependency.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules'];
 const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
 export interface LoadConfigResult {
@@ -100,6 +101,41 @@ export function loadConfig(cwd: string): LoadConfigResult {
       config.maxVulnerabilitySeverity = record.maxVulnerabilitySeverity as RnDepScannerConfig['maxVulnerabilitySeverity'];
     } else {
       warnings.push(`${CONFIG_FILENAME}: "maxVulnerabilitySeverity" must be one of critical/high/moderate/low, got ${describeType(record.maxVulnerabilitySeverity)} — ignoring this field`);
+    }
+  }
+
+  if ('customCompatibilityRules' in record) {
+    const value = record.customCompatibilityRules;
+    if (!Array.isArray(value)) {
+      warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules" must be an array, got ${describeType(value)} — ignoring this field`);
+    } else {
+      const validRules: CompatibilityRule[] = [];
+      value.forEach((entry, index) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+          warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules[${index}]" must be an object — skipping this entry`);
+          return;
+        }
+        const e = entry as Record<string, unknown>;
+        if (typeof e.package !== 'string' || typeof e.version !== 'string') {
+          warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules[${index}]" must have string "package" and "version" fields — skipping this entry`);
+          return;
+        }
+        const optionalFieldsValid = (['reactNative', 'react', 'node'] as const).every(
+          (field) => e[field] === undefined || typeof e[field] === 'string'
+        );
+        if (!optionalFieldsValid) {
+          warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules[${index}]" has a non-string "reactNative"/"react"/"node" field — skipping this entry`);
+          return;
+        }
+        validRules.push({
+          package: e.package,
+          version: e.version,
+          reactNative: e.reactNative as string | undefined,
+          react: e.react as string | undefined,
+          node: e.node as string | undefined,
+        });
+      });
+      if (validRules.length > 0) config.customCompatibilityRules = validRules;
     }
   }
 

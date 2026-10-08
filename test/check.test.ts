@@ -225,3 +225,27 @@ test('checkCommand - --strict does not exit 1 for a project with no New Architec
     cleanup(dir);
   }
 });
+
+test('checkCommand - a customCompatibilityRules entry in .rn-dep-scanner.json flags an incompatible internal/unreleased package', async () => {
+  const dir = makeTempDir();
+  try {
+    writeProject(dir, { 'react-native': '0.70.0', react: '18.3.1', 'my-internal-fork': '1.0.0' });
+    writeFileSync(
+      join(dir, '.rn-dep-scanner.json'),
+      JSON.stringify({
+        customCompatibilityRules: [
+          { package: 'my-internal-fork', version: '1.x', reactNative: '>=0.75.0' },
+        ],
+      })
+    );
+
+    const { output } = await captureStdout(() => checkCommand({ cwd: dir, json: true, security: false }));
+    const result = JSON.parse(output);
+
+    const issue = result.issues.find((i: { package: string }) => i.package === 'my-internal-fork');
+    assert.ok(issue, 'expected the custom rule to produce an issue for my-internal-fork');
+    assert.equal(issue.status, 'error');
+  } finally {
+    cleanup(dir);
+  }
+});

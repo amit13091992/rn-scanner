@@ -1,14 +1,19 @@
 import { satisfies } from 'semver';
 import { getCompatibilityRules } from '../data/compatibility.js';
-import type { DependencyInfo, CompatibilityCheckResult, CompatibilityStatus } from '../types/dependency.js';
+import type { DependencyInfo, CompatibilityCheckResult, CompatibilityStatus, CompatibilityRule } from '../types/dependency.js';
 import { normalizeVersion } from '../utils/versionComparison.js';
 
 export function analyzeCompatibility(
   dep: DependencyInfo,
   reactNativeVersion: string | null,
-  reactVersion: string | null
+  reactVersion: string | null,
+  customRules: CompatibilityRule[] = []
 ): CompatibilityCheckResult {
-  const rules = getCompatibilityRules(dep.name);
+  // Project-specific rules (`.rn-dep-scanner.json`'s `customCompatibilityRules`) are checked
+  // in addition to the curated built-ins, not instead of them — an internal fork or an
+  // unreleased dependency this project depends on can get a rule without waiting on
+  // `data/compatibility.ts` to be updated upstream.
+  const rules = [...getCompatibilityRules(dep.name), ...customRules.filter((r) => r.package === dep.name)];
   const messages: string[] = [];
   let status: CompatibilityStatus = 'compatible';
   let detectedFrom: 'rules' | 'no-rules' | 'no-lock-file' = 'rules';
@@ -121,9 +126,10 @@ export function analyzeCompatibility(
 export function analyzeAllDependencies(
   dependencies: DependencyInfo[],
   reactNativeVersion: string | null,
-  reactVersion: string | null
+  reactVersion: string | null,
+  customRules: CompatibilityRule[] = []
 ): CompatibilityCheckResult[] {
   return dependencies.map((dep) =>
-    analyzeCompatibility(dep, reactNativeVersion, reactVersion)
+    analyzeCompatibility(dep, reactNativeVersion, reactVersion, customRules)
   );
 }
