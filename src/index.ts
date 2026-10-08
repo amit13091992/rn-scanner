@@ -127,11 +127,13 @@ program
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
+  .option('--all-workspaces', 'Scan every workspace package in the monorepo, not just --cwd, and aggregate the results')
   .action(async (options) => {
     await securityCommand({
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 
@@ -183,11 +185,13 @@ program
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
+  .option('--all-workspaces', 'Report against every workspace package in the monorepo, not just --cwd')
   .action(async (options) => {
     await licensesCommand({
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 
@@ -267,11 +271,13 @@ program
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
+  .option('--all-workspaces', 'Evaluate every workspace package in the monorepo, not just --cwd')
   .action(async (options) => {
     await policyCommand({
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 

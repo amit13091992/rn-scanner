@@ -223,24 +223,29 @@ rn-dep-scanner graph --dot | dot -Tpng -o graph.png
 ### `security`
 
 ```bash
-rn-dep-scanner security [--json] [--html [path]] [--cwd <path>]
+rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (the same data `check`
 reports by default), with the full dependency path to each vulnerable package. Exits 1 on any
 critical/high finding — useful in CI without running the full `check`. Respects
-`ignoreVulnerabilities` in `.rn-dep-scanner.json`.
+`ignoreVulnerabilities` in `.rn-dep-scanner.json`. `--all-workspaces` scans every workspace
+package in the monorepo containing `--cwd` and aggregates the results into one report (`--json`
+gives a `workspaces[]` array plus a combined `summary`), instead of just the one package
+`--cwd` points at; a no-op outside a workspace.
 
 ### `licenses`
 
 ```bash
-rn-dep-scanner licenses [--json] [--html [path]] [--cwd <path>]
+rn-dep-scanner licenses [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Reports each package's declared license across the full transitive tree, optionally flagging a
 `licenseDenylist` from `.rn-dep-scanner.json` (exits 1 on a match). Reads only each package's
 *hoisted* `node_modules/<name>/package.json` — a version that lost the hoist to a conflicting
 sibling won't have its license read; see [Known limitations](#known-limitations).
+`--all-workspaces` reports against every workspace package in the monorepo, same aggregation
+behavior as `security` above.
 
 ### `sbom`
 
@@ -265,12 +270,15 @@ directories you pass are the inputs).
 ### `policy`
 
 ```bash
-rn-dep-scanner policy [--json] [--html [path]] [--cwd <path>]
+rn-dep-scanner policy [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and
 `maxVulnerabilitySeverity` fields (see [Config](#config-file-rn-dep-scannerjson)) by reusing the
-same analyzers `licenses`/`security` use. Exits 1 on any violation.
+same analyzers `licenses`/`security` use. Exits 1 on any violation. `--all-workspaces` evaluates
+every workspace package in the monorepo, same aggregation behavior as `security` above — each
+workspace package reads its own `.rn-dep-scanner.json`, so a monorepo-wide policy currently
+means placing (or symlinking) the same config into each workspace package.
 
 ### `baseline`
 
@@ -474,9 +482,10 @@ package).
   root when run from a workspace package, and a workspace package that depends on a sibling
   workspace package (`"@acme/shared": "workspace:^1.0.0"`) has that sibling cross-linked into
   the same dependency graph for yarn/pnpm/bun too — so a vulnerable package reachable only
-  through a local workspace dependency is no longer invisible to `why`/`security`/etc. A single
-  run still scans the one workspace package it's invoked against, not every workspace package
-  in the monorepo at once.
+  through a local workspace dependency is no longer invisible to `why`/`security`/etc.
+  `security`/`licenses`/`policy` additionally support `--all-workspaces` to scan every
+  workspace package in one aggregated run instead of just `--cwd`; `check`/`doctor`/`why`/`tree`
+  don't have that flag yet — run them per workspace package directly.
 - Bun lockfile parsing is less battle-tested than npm/yarn/pnpm.
 - The Android 16KB page-size check only inspects prebuilt `.so` files already present in
   `node_modules` (loose or `.aar`/`.jar`-packaged) — a package that compiles native code during
