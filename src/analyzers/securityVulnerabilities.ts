@@ -3,6 +3,7 @@ import type { DependencyInfo } from '../types/dependency.js';
 import type { DependencyGraph } from '../types/dependencyGraph.js';
 import { collectAllPackageVersions } from '../utils/dependencyGraph.js';
 import type { PackageVulnerabilityResult, SecurityScanResult, VulnerabilitySeverity } from '../types/vulnerability.js';
+import { matchKnownMalwarePackages } from '../data/knownMalwarePackages.js';
 
 export interface SecurityAnalysisResult extends SecurityScanResult {
   summary: Record<VulnerabilitySeverity, number>;
@@ -80,6 +81,35 @@ export async function analyzeSecurityVulnerabilities(
           .filter((r) => r.vulnerabilities.length > 0),
       };
 
+  // Known-malware check runs locally regardless of whether the OSV.dev network call succeeded —
+  // closes the gap where a live worm-strain incident (e.g. Mini Shai-Hulud) hasn't been given
+  // a GHSA ID yet, so OSV wouldn't surface it even with network access. Merged into the same
+  // `results` shape rather than a parallel field, so every existing consumer (check/security
+  // commands, --json, baseline/policy) sees it without new wiring.
+  const malwareMatches = matchKnownMalwarePackages(packages);
+  const resultsWithMalware: PackageVulnerabilityResult[] = [...scan.results];
+  for (const match of malwareMatches) {
+    const meta = metaByKey.get(`${match.package}@${match.version}`);
+    const vuln = {
+      id: `RNDS-MALWARE-${match.package}@${match.version}`,
+      summary: `${match.incident}: ${match.summary}`,
+      severity: 'critical' as VulnerabilitySeverity,
+      references: [match.reference],
+    };
+    const existing = resultsWithMalware.find((r) => r.package === match.package && r.version === match.version);
+    if (existing) {
+      existing.vulnerabilities = [...existing.vulnerabilities, vuln];
+    } else {
+      resultsWithMalware.push({
+        package: match.package,
+        version: match.version,
+        vulnerabilities: [vuln],
+        direct: meta?.direct ?? true,
+        paths: meta?.paths ?? [],
+      });
+    }
+  }
+
   const summary: Record<VulnerabilitySeverity, number> = {
     critical: 0,
     high: 0,
@@ -88,11 +118,11 @@ export async function analyzeSecurityVulnerabilities(
     unknown: 0,
   };
 
-  for (const result of scan.results) {
+  for (const result of resultsWithMalware) {
     for (const vuln of result.vulnerabilities) {
       summary[vuln.severity]++;
     }
   }
 
-  return { ...scan, summary };
+  return { ...scan, results: resultsWithMalware, summary };
 }
