@@ -111,6 +111,45 @@ dependencies:
     strictEqual(result.manager, 'pnpm');
     strictEqual(result.dependencies.size, 0);
   });
+
+  test('parses the current (lockfileVersion 9+) format, where resolved versions live in snapshots: not a top-level dependencies: block', () => {
+    const tmpDir = join(tmpdir(), `pnpm-v9-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+
+    const pnpmLockContent = `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      is-odd:
+        specifier: ^3.0.1
+        version: 3.0.1
+
+packages:
+
+  is-number@6.0.0:
+    resolution: {integrity: sha512-abc}
+
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-def}
+
+snapshots:
+
+  is-number@6.0.0: {}
+
+  is-odd@3.0.1:
+    dependencies:
+      is-number: 6.0.0
+`;
+
+    writeFileSync(join(tmpDir, 'pnpm-lock.yaml'), pnpmLockContent);
+    const result = parsePnpmLock(tmpDir);
+
+    strictEqual(result.manager, 'pnpm');
+    strictEqual(result.dependencies.get('is-odd')?.resolvedVersion, '3.0.1');
+    strictEqual(result.dependencies.get('is-number')?.resolvedVersion, '6.0.0');
+  });
 });
 
 describe('NPM Lock Parser', () => {

@@ -448,30 +448,34 @@ interface PnpmPackageEntry {
   dependencies: Record<string, string>; // depName -> resolved version spec (may include peer parens)
 }
 
+/** Strips a peer-dependency parenthetical suffix and a leading "/" from a pnpm lockfile key
+ *  (e.g. "/foo@1.0.0(react@18.0.0)" or "foo@1.0.0") and splits it into name/version. Shared by
+ *  both the legacy `packages:`-block parser and the current `snapshots:`-block parser, since
+ *  both use the same "name@version" key shape. */
+function parsePnpmKey(rawKey: string): { name: string; version: string } {
+  let key = rawKey.startsWith('/') ? rawKey.slice(1) : rawKey;
+  const parenIdx = key.indexOf('(');
+  if (parenIdx !== -1) key = key.slice(0, parenIdx);
+  const atIndex = key.startsWith('@') ? key.indexOf('@', 1) : key.indexOf('@');
+  if (atIndex === -1) return { name: key, version: '' };
+  return { name: key.slice(0, atIndex), version: key.slice(atIndex + 1) };
+}
+
 /**
- * Parses pnpm-lock.yaml's top-level `packages:` block (v5.x and v6+ key styles) into
- * entries keyed by their raw lockfile key, which already uniquely identifies a package's
- * resolved position (including distinct peer-dependency variants).
+ * Parses a block of 2-space-indented "name@version:" entries, each optionally followed by a
+ * 4-space `dependencies:`/`optionalDependencies:` sub-block of 6-space "depName: depVersion"
+ * lines — the shared shape of pnpm-lock.yaml's legacy `packages:` block (v5.x/v6.x, where each
+ * package entry carries its own resolved dependency versions directly) and its current
+ * `snapshots:` block (v9+, introduced when pnpm split package metadata from the actual
+ * dependency graph — `packages:` in v9+ has resolution/engines metadata only, no
+ * `dependencies`, which is exactly why this needed fixing: the old parser kept finding a
+ * `packages:` block and successfully parsing it, just one that no longer carries any edges).
+ * A key line with no sub-block ends in a literal `{}` (e.g. "is-number@6.0.0: {}") rather than
+ * bare ":", which the legacy parser's "must end with ':'" check didn't account for either.
  */
-function parsePnpmPackages(content: string): PnpmPackageEntry[] {
-  const lines = content.split('\n');
+function parsePnpmEntryBlock(lines: string[], startIdx: number): PnpmPackageEntry[] {
   const entries: PnpmPackageEntry[] = [];
-  let i = 0;
-
-  // Find the top-level "packages:" block.
-  while (i < lines.length && lines[i].trimEnd() !== 'packages:') i++;
-  if (i >= lines.length) return entries;
-  i++;
-
-  const parseName = (rawKey: string): { name: string; version: string } => {
-    let key = rawKey.startsWith('/') ? rawKey.slice(1) : rawKey;
-    // Strip peer-dependency parenthetical suffix, e.g. "foo@1.0.0(react@18.0.0)".
-    const parenIdx = key.indexOf('(');
-    if (parenIdx !== -1) key = key.slice(0, parenIdx);
-    const atIndex = key.startsWith('@') ? key.indexOf('@', 1) : key.indexOf('@');
-    if (atIndex === -1) return { name: key, version: '' };
-    return { name: key.slice(0, atIndex), version: key.slice(atIndex + 1) };
-  };
+  let i = startIdx;
 
   while (i < lines.length) {
     const line = lines[i];
@@ -479,20 +483,115 @@ function parsePnpmPackages(content: string): PnpmPackageEntry[] {
       i++;
       continue;
     }
-    // A top-level "packages:" child entry is indented exactly 2 spaces and ends with ':'.
-    const isTwoSpaceKey = /^  \S/.test(line) && line.trimEnd().endsWith(':');
-    if (!isTwoSpaceKey) {
-      // Anything at indent 0 ends the packages block.
-      if (/^\S/.test(line)) break;
+    if (/^\S/.test(line)) break; // indent 0 — block ended
+
+    const keyMatch = line.match(/^ {2}(.+?):(\s*\{\})?\s*$/);
+    if (!keyMatch) {
       i++;
       continue;
     }
 
-    const rawKey = line.trim().replace(/:$/, '').replace(/^['"]|['"]$/g, '');
-    const { name, version } = parseName(rawKey);
+    const rawKey = keyMatch[1].replace(/^['"]|['"]$/g, '');
+    const { name, version } = parsePnpmKey(rawKey);
     const dependencies: Record<string, string> = {};
-
+    const hasEmptyBlock = !!keyMatch[2];
     i++;
+
+    if (!hasEmptyBlock) {
+      while (i < lines.length) {
+        const sub = lines[i];
+        if (sub.trim() === '') {
+          i++;
+          continue;
+        }
+        const subDepth = sub.match(/^ */)?.[0].length ?? 0;
+        if (subDepth <= 2) break;
+
+        if (subDepth === 4 && (sub.trim() === 'dependencies:' || sub.trim() === 'optionalDependencies:')) {
+          i++;
+          while (i < lines.length) {
+            const depLine = lines[i];
+            const depDepth = depLine.match(/^ */)?.[0].length ?? 0;
+            if (depDepth <= 4 || depLine.trim() === '') break;
+            const m = depLine.trim().match(/^['"]?([^'":\s]+)['"]?:\s*['"]?([^'"\s]+)['"]?$/);
+            if (m) dependencies[m[1]] = m[2];
+            i++;
+          }
+          continue;
+        }
+
+        i++;
+      }
+    }
+
+    entries.push({ key: rawKey, name, version, dependencies });
+  }
+
+  return entries;
+}
+
+/** Finds a top-level (indent-0) "<name>:" line and returns the index just after it, or -1. */
+function findTopLevelBlockStart(lines: string[], blockName: string): number {
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trimEnd() === `${blockName}:`) return i + 1;
+  }
+  return -1;
+}
+
+/**
+ * Parses pnpm-lock.yaml's actual dependency-graph data: the current (v9+) `snapshots:` block
+ * when present (what every current `pnpm install` produces), else the legacy `packages:` block
+ * (v5.x/v6.x, where `packages:` itself still carried `dependencies`).
+ */
+function parsePnpmPackages(content: string): PnpmPackageEntry[] {
+  const lines = content.split('\n');
+
+  const snapshotsStart = findTopLevelBlockStart(lines, 'snapshots');
+  if (snapshotsStart !== -1) return parsePnpmEntryBlock(lines, snapshotsStart);
+
+  const packagesStart = findTopLevelBlockStart(lines, 'packages');
+  if (packagesStart !== -1) return parsePnpmEntryBlock(lines, packagesStart);
+
+  return [];
+}
+
+/**
+ * Parses one importer's (a single-package project's root, or one workspace package's own
+ * entry) declared dependencies from pnpm-lock.yaml's current (v9+) `importers:` block —
+ * `importers: { '.': { dependencies: { name: { specifier, version } } }, 'packages/foo': {...} }`
+ * — returning each dependency's resolved `version` (a `link:../relative` target for a sibling
+ * workspace package, otherwise a plain resolved version to look up in `snapshots:`). Returns an
+ * empty map, not a crash, for a legacy lockfile with no `importers:` block at all — callers
+ * fall back to resolving by the dependency's own requested range in that case.
+ */
+function parsePnpmImporterDependencies(content: string, importerPath: string): Map<string, string> {
+  const result = new Map<string, string>();
+  const lines = content.split('\n');
+  const importersStart = findTopLevelBlockStart(lines, 'importers');
+  if (importersStart === -1) return result;
+
+  const targetKey = importerPath === '' ? '.' : importerPath;
+  let i = importersStart;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
+    if (/^\S/.test(line)) break; // indent 0 — importers block ended
+
+    const importerMatch = line.match(/^ {2}(.+?):(\s*\{\})?\s*$/);
+    if (!importerMatch) {
+      i++;
+      continue;
+    }
+    const importerKey = importerMatch[1].replace(/^['"]|['"]$/g, '');
+    const isTarget = importerKey === targetKey;
+    const importerHasEmptyBlock = !!importerMatch[2];
+    i++;
+    if (importerHasEmptyBlock) continue;
+
     while (i < lines.length) {
       const sub = lines[i];
       if (sub.trim() === '') {
@@ -502,14 +601,27 @@ function parsePnpmPackages(content: string): PnpmPackageEntry[] {
       const subDepth = sub.match(/^ */)?.[0].length ?? 0;
       if (subDepth <= 2) break;
 
-      if (subDepth === 4 && (sub.trim() === 'dependencies:' || sub.trim() === 'optionalDependencies:')) {
+      if (subDepth === 4 && /^(dependencies|devDependencies|optionalDependencies):$/.test(sub.trim())) {
         i++;
         while (i < lines.length) {
           const depLine = lines[i];
           const depDepth = depLine.match(/^ */)?.[0].length ?? 0;
           if (depDepth <= 4 || depLine.trim() === '') break;
-          const m = depLine.trim().match(/^['"]?([^'":\s]+)['"]?:\s*['"]?([^'"\s]+)['"]?$/);
-          if (m) dependencies[m[1]] = m[2];
+
+          const depNameMatch = depLine.trim().match(/^['"]?([^'":\s]+)['"]?:\s*$/);
+          if (depNameMatch) {
+            const depName = depNameMatch[1];
+            i++;
+            while (i < lines.length) {
+              const detailLine = lines[i];
+              const detailDepth = detailLine.match(/^ */)?.[0].length ?? 0;
+              if (detailDepth <= 6 || detailLine.trim() === '') break;
+              const versionMatch = detailLine.trim().match(/^version:\s*['"]?([^'"\s]+)['"]?$/);
+              if (versionMatch && isTarget) result.set(depName, versionMatch[1]);
+              i++;
+            }
+            continue;
+          }
           i++;
         }
         continue;
@@ -517,15 +629,14 @@ function parsePnpmPackages(content: string): PnpmPackageEntry[] {
 
       i++;
     }
-
-    entries.push({ key: rawKey, name, version, dependencies });
   }
 
-  return entries;
+  return result;
 }
 
-/** Parses the root importer's direct dependencies from pnpm-lock.yaml (v5.x top-level
- * `dependencies:`/`devDependencies:` blocks, or v6+ `importers: '.':` blocks). */
+/** Parses the root importer's direct dependencies from pnpm-lock.yaml's legacy (v5.x) top-level
+ *  `dependencies:`/`devDependencies:` blocks — v6.x/v9+ use `importers:` instead (see
+ *  `parsePnpmImporterDependencies`), checked first by `resolvePnpmDependencyVersions` below. */
 function parsePnpmRootDependencies(content: string): Map<string, string> {
   const result = new Map<string, string>();
   const lines = content.split('\n');
@@ -560,6 +671,14 @@ function parsePnpmRootDependencies(content: string): Map<string, string> {
   return result;
 }
 
+/** `importers:` (v6+/v9+) takes precedence over the legacy top-level `dependencies:` block
+ *  (v5.x) when present — a lockfile never has both for the same information. */
+function resolvePnpmDependencyVersions(content: string, importerPath: string): Map<string, string> {
+  const fromImporters = parsePnpmImporterDependencies(content, importerPath);
+  if (fromImporters.size > 0) return fromImporters;
+  return parsePnpmRootDependencies(content);
+}
+
 async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
   const workspaceRoot = resolveDependencyRoot(cwd);
   const pnpmLockPath = resolve(workspaceRoot, 'pnpm-lock.yaml');
@@ -589,7 +708,8 @@ async function buildPnpmGraph(cwd: string): Promise<DependencyGraph | null> {
 
   const packageJson = readPackageJson(cwd);
   const directDeps = getAllDependencies(packageJson);
-  const rootDeps = parsePnpmRootDependencies(content);
+  const importerPath = relative(workspaceRoot, resolve(cwd)).split(sep).join('/');
+  const rootDeps = resolvePnpmDependencyVersions(content, importerPath);
 
   const nodes = new Map<string, DependencyGraphNode>();
   nodes.set('', { name: '', version: '', parents: [], children: [] });
@@ -675,7 +795,19 @@ function stripTrailingCommasForBun(json: string): string {
   return json.replace(/,(\s*[}\]])/g, '$1');
 }
 
-function parseBunPackages(raw: string): { entries: BunPackageEntry[]; rootDeps: Record<string, string> } {
+/**
+ * `content.workspaces` has one entry per workspace package, keyed by its relative path from
+ * the monorepo root ("" for the root/single-package project itself, "packages/foo" for a
+ * workspace package) — each carrying that specific package's own `dependencies`/
+ * `devDependencies`/`optionalDependencies`. `importerPath` selects which one to read, so a
+ * workspace sub-package's own declared deps are used (previously hardcoded to `['']`, the
+ * monorepo root's own deps — wrong for any sub-package that declares a dependency the root
+ * doesn't, which the `rootDeps` gate below would then silently drop as if it weren't real).
+ */
+function parseBunPackages(
+  raw: string,
+  importerPath: string
+): { entries: BunPackageEntry[]; rootDeps: Record<string, string> } {
   const content = JSON.parse(stripTrailingCommasForBun(raw));
   const entries: BunPackageEntry[] = [];
 
@@ -709,10 +841,10 @@ function parseBunPackages(raw: string): { entries: BunPackageEntry[]; rootDeps: 
   }
 
   const rootDeps: Record<string, string> = {};
-  const rootWorkspace = content.workspaces?.[''];
-  if (rootWorkspace) {
+  const importer = content.workspaces?.[importerPath];
+  if (importer) {
     for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-      const depMap = rootWorkspace[field];
+      const depMap = importer[field];
       if (depMap && typeof depMap === 'object') {
         Object.assign(rootDeps, depMap);
       }
@@ -728,9 +860,10 @@ async function buildBunGraph(cwd: string): Promise<DependencyGraph | null> {
   if (!existsSync(bunLockPath)) return null;
   const workspacePackages = findWorkspacePackages(workspaceRoot);
 
+  const importerPath = relative(workspaceRoot, resolve(cwd)).split(sep).join('/');
   let parsed: { entries: BunPackageEntry[]; rootDeps: Record<string, string> };
   try {
-    parsed = parseBunPackages(readFileSync(bunLockPath, 'utf-8'));
+    parsed = parseBunPackages(readFileSync(bunLockPath, 'utf-8'), importerPath);
   } catch {
     return null;
   }

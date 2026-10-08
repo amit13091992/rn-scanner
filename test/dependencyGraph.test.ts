@@ -624,3 +624,154 @@ describe('buildDependencyGraph (npm — real hoisted-tree resolution, not path n
     strictEqual(paths[0].join(' > '), '@acme/shared > left-pad');
   });
 });
+
+describe('buildDependencyGraph (pnpm — modern lockfileVersion 9+ format)', () => {
+  test('resolves a transitive dependency via the snapshots: block (not the legacy packages: block)', async () => {
+    const dir = makeTempProject();
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'app', version: '1.0.0', dependencies: { 'is-odd': '^3.0.1' } })
+    );
+
+    // Real pnpm v9+ shape: `packages:` carries resolution metadata only (no `dependencies`);
+    // the actual dependency graph lives in `snapshots:`, and direct deps live under
+    // `importers:` rather than a top-level `dependencies:` block.
+    writeFileSync(
+      join(dir, 'pnpm-lock.yaml'),
+      [
+        "lockfileVersion: '9.0'",
+        '',
+        'importers:',
+        '',
+        '  .:',
+        '    dependencies:',
+        '      is-odd:',
+        '        specifier: ^3.0.1',
+        '        version: 3.0.1',
+        '',
+        'packages:',
+        '',
+        '  is-number@6.0.0:',
+        "    resolution: {integrity: sha512-abc}",
+        '',
+        '  is-odd@3.0.1:',
+        "    resolution: {integrity: sha512-def}",
+        '',
+        'snapshots:',
+        '',
+        '  is-number@6.0.0: {}',
+        '',
+        '  is-odd@3.0.1:',
+        '    dependencies:',
+        '      is-number: 6.0.0',
+        '',
+      ].join('\n')
+    );
+
+    const graph = await buildDependencyGraph(dir);
+    ok(graph);
+    strictEqual(graph!.manager, 'pnpm');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const paths = findPathsToPackage(graph!, 'is-number');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), 'is-odd > is-number');
+  });
+
+  test('scopes to the specific workspace package via importers:, and cross-links a sibling workspace dependency', async () => {
+    const root = makeTempProject();
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'root-app', private: true }));
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+    writeFileSync(join(sharedDir, 'package.json'), JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'is-odd': '^3.0.1' } }));
+    writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', version: '1.0.0', dependencies: { '@acme/shared': 'workspace:^1.0.0' } }));
+
+    writeFileSync(
+      join(root, 'pnpm-lock.yaml'),
+      [
+        "lockfileVersion: '9.0'",
+        '',
+        'importers:',
+        '',
+        '  .: {}',
+        '',
+        '  packages/mobile-app:',
+        '    dependencies:',
+        "      '@acme/shared':",
+        '        specifier: workspace:^1.0.0',
+        '        version: link:../shared',
+        '',
+        '  packages/shared:',
+        '    dependencies:',
+        '      is-odd:',
+        '        specifier: ^3.0.1',
+        '        version: 3.0.1',
+        '',
+        'packages:',
+        '',
+        '  is-number@6.0.0:',
+        "    resolution: {integrity: sha512-abc}",
+        '',
+        '  is-odd@3.0.1:',
+        "    resolution: {integrity: sha512-def}",
+        '',
+        'snapshots:',
+        '',
+        '  is-number@6.0.0: {}',
+        '',
+        '  is-odd@3.0.1:',
+        '    dependencies:',
+        '      is-number: 6.0.0',
+        '',
+      ].join('\n')
+    );
+
+    const graph = await buildDependencyGraph(appDir);
+    ok(graph);
+    const paths = findPathsToPackage(graph!, 'is-number');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), '@acme/shared > is-odd > is-number');
+  });
+});
+
+describe('buildDependencyGraph (bun — workspace sub-package deps independent of the root\'s own)', () => {
+  test('a workspace sub-package\'s own ordinary dependency resolves even when the root declares a different one', async () => {
+    const root = makeTempProject();
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'root-app', private: true, workspaces: ['packages/*'], dependencies: { 'left-pad': '^1.0.0' } }));
+    writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', version: '1.0.0', dependencies: { 'is-odd': '^3.0.1' } }));
+
+    const bunLockContent = JSON.stringify({
+      lockfileVersion: 2,
+      workspaces: {
+        '': { name: 'root-app', dependencies: { 'left-pad': '^1.0.0' } },
+        'packages/mobile-app': { name: 'mobile-app', version: '1.0.0', dependencies: { 'is-odd': '^3.0.1' } },
+      },
+      packages: {
+        'left-pad': ['left-pad@1.3.0', '', {}, 'sha512-abc'],
+        'is-odd': ['is-odd@3.0.1', '', { dependencies: { 'is-number': '^6.0.0' } }, 'sha512-def'],
+        'is-number': ['is-number@6.0.0', '', {}, 'sha512-ghi'],
+      },
+    });
+    writeFileSync(join(root, 'bun.lock'), bunLockContent);
+
+    const graph = await buildDependencyGraph(appDir);
+    ok(graph);
+    strictEqual(graph!.manager, 'bun');
+    strictEqual(graph!.hierarchyComplete, true);
+
+    const paths = findPathsToPackage(graph!, 'is-number');
+    strictEqual(paths.length, 1);
+    strictEqual(paths[0].join(' > '), 'is-odd > is-number');
+
+    // left-pad is the root's own dependency, not mobile-app's — must not leak in.
+    strictEqual(findPathsToPackage(graph!, 'left-pad').length, 0);
+  });
+});
