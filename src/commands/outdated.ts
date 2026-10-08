@@ -1,27 +1,28 @@
 import { coerce, gt } from 'semver';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { fetchLatestVersions } from '../utils/npmRegistry.js';
+import { detectReactNativeVersions } from '../detectors/reactNative.js';
+import { analyzeRecommendedUpdates } from '../analyzers/recommendedUpdates.js';
 import {
   printHeader,
   printSection,
   printSuccess,
   printWarning,
   printError,
+  printInfo,
 } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+import type { OutdatedPackage } from '../types/outdated.js';
 
 export interface OutdatedOptions {
   cwd?: string;
   json?: boolean;
   html?: HtmlOption;
   majorOnly?: boolean;
-}
-
-export interface OutdatedPackage {
-  name: string;
-  current: string;
-  latest: string;
-  type: 'major' | 'minor' | 'patch';
+  /** Resolve a React-Native-compatible recommended version per package (an extra npm registry
+   *  call per outdated package with compatibility data) — opt-in since it's slower than a
+   *  plain outdated check. */
+  recommend?: boolean;
 }
 
 function compareVersions(current: string, latest: string): 'major' | 'minor' | 'patch' | null {
@@ -72,6 +73,14 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
     const minor = outdated.filter(p => p.type === 'minor');
     const patch = outdated.filter(p => p.type === 'patch');
 
+    const recommendations = options.recommend
+      ? await (async () => {
+          const rnInfo = await detectReactNativeVersions(cwd);
+          return analyzeRecommendedUpdates(outdated, rnInfo.version);
+        })()
+      : null;
+    const recommendationByPackage = new Map((recommendations ?? []).map((r) => [r.package, r]));
+
     if (jsonMode) {
       const result = {
         summary: {
@@ -81,6 +90,7 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
           patch: patch.length,
         },
         packages: outdated,
+        ...(recommendations ? { recommendations } : {}),
       };
       emitStructuredOutput(result, 'Outdated Dependencies', options);
       return;
@@ -94,25 +104,34 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
 
     printSection('Available Updates');
 
+    function printPkgLine(pkg: OutdatedPackage): void {
+      console.log(`  ${pkg.name}: ${pkg.current} → ${pkg.latest}`);
+      const rec = recommendationByPackage.get(pkg.name);
+      if (rec && rec.recommended !== pkg.latest) {
+        if (rec.recommended) {
+          console.log(`    └─ Recommended: ${rec.recommended} (${rec.reason})`);
+        } else {
+          console.log(`    └─ ${rec.reason}`);
+        }
+      }
+    }
+
     if (major.length > 0) {
       printError(`🔴 Major Updates (${major.length}) - May include breaking changes`);
-      major.forEach(pkg => {
-        console.log(`  ${pkg.name}: ${pkg.current} → ${pkg.latest}`);
-      });
+      major.forEach(printPkgLine);
     }
 
     if (minor.length > 0 && !options.majorOnly) {
       printWarning(`🟡 Minor Updates (${minor.length}) - New features, backward compatible`);
-      minor.forEach(pkg => {
-        console.log(`  ${pkg.name}: ${pkg.current} → ${pkg.latest}`);
-      });
+      minor.forEach(printPkgLine);
     }
 
     if (patch.length > 0 && !options.majorOnly) {
       printSuccess(`🟢 Patch Updates (${patch.length}) - Bug fixes only`);
-      patch.forEach(pkg => {
-        console.log(`  ${pkg.name}: ${pkg.current} → ${pkg.latest}`);
-      });
+      patch.forEach(printPkgLine);
+    }
+    if (options.recommend) {
+      printInfo('Recommendations check each package\'s known React Native compatibility (data/compatibility.ts) — packages with no compatibility data default to the latest published version.');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

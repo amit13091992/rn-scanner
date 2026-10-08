@@ -77,12 +77,14 @@ program
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--major-only', 'Only show major version updates')
+  .option('--recommend', 'Resolve a React-Native-compatible recommended version per package, not just npm\'s absolute latest')
   .option('--cwd <path>', 'Working directory')
   .action(async (options) => {
     await outdatedCommand({
       json: options.json || false,
       html: options.html || false,
       majorOnly: options.majorOnly || false,
+      recommend: options.recommend || false,
       cwd: options.cwd || process.cwd(),
     });
   });

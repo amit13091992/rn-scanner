@@ -47,3 +47,31 @@ export async function fetchLatestVersions(
 
   return results;
 }
+
+/**
+ * Fetches every published version string for a single package (the full packument's
+ * `versions` map, keys only) — needed to pick the highest version *within a specific major
+ * line* (e.g. "the latest 3.x", not npm's absolute latest), which `/latest` alone can't answer.
+ * Deliberately scoped to callers that already know they need this (recommended-update
+ * resolution for a small set of packages with compatibility data), not every outdated check —
+ * the full packument is much larger than `/latest` and shouldn't be fetched for every dependency.
+ */
+export async function fetchAllVersions(name: string): Promise<string[] | undefined> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      `${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}`,
+      { signal: controller.signal }
+    );
+    if (!response.ok) return undefined;
+
+    const data = (await response.json()) as { versions?: Record<string, unknown> };
+    return data.versions ? Object.keys(data.versions) : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
