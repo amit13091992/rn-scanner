@@ -44,3 +44,20 @@ export function getReactNativeRequirements(version: string): ReactNativeNativeRe
   }
   return closest;
 }
+
+/**
+ * Every RN minor version this registry has its own entry for, ascending by (major, minor).
+ * Used to plan an incremental upgrade path (`analyzers/upgradePath.ts`) — hops only land on
+ * versions we actually have a confirmed/estimated native-toolchain baseline for, never an
+ * arbitrary version this project knows nothing about.
+ */
+export function getKnownReactNativeVersions(): string[] {
+  return REGISTRY.map((entry) => entry.version)
+    .slice()
+    .sort((a, b) => {
+      const pa = parseMinor(a);
+      const pb = parseMinor(b);
+      if (!pa || !pb) return 0;
+      return pa.major - pb.major || pa.minor - pb.minor;
+    });
+}

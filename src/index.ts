@@ -437,17 +437,23 @@ program
 program
   .command('upgrade')
   .description('Assess upgrade readiness to a target React Native version')
-  .requiredOption('--to <version>', 'Target React Native version')
+  .option('--to <version>', 'Target React Native version')
+  .option('--latest', "Resolve the target version from npm's react-native `latest` dist-tag instead of --to")
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
   .option('--all-workspaces', 'Assess every workspace package in the monorepo, not just --cwd, and aggregate the results')
   .action(async (options) => {
+    if (!options.to && !options.latest) {
+      console.error('error: one of --to <version> or --latest is required');
+      process.exit(1);
+    }
     await upgradeCommand(options.to, {
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
       allWorkspaces: options.allWorkspaces || false,
+      latest: options.latest || false,
     });
   });
 

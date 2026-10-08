@@ -52,6 +52,7 @@ cd your-react-native-project
 rn-dep-scanner              # same as `rn-dep-scanner check` — the default command
 rn-dep-scanner doctor       # is your native toolchain (JDK/AGP/Xcode/...) ready to build?
 rn-dep-scanner upgrade --to 0.81.0   # what would upgrading to RN 0.81 break?
+rn-dep-scanner upgrade --latest      # ...or just assess against whatever RN's latest is right now
 ```
 
 Run `rn-dep-scanner --help` for the live command list, or `rn-dep-scanner <command> --help` for
@@ -65,7 +66,7 @@ always the source of truth.
 | [`check`](#check-default-command) | "Is my project's dependency set healthy overall?" — the default command |
 | [`doctor`](#doctor) | "Is my Android/iOS build toolchain actually set up correctly?" |
 | [`outdated`](#outdated) | "Which packages have newer versions available?" |
-| [`upgrade --to <version>`](#upgrade---to-version) | "What happens if I upgrade React Native to X?" |
+| [`upgrade --to <version>` / `--latest`](#upgrade) | "What happens if I upgrade React Native to X, or to whatever's latest?" |
 | [`compare-rn <from> <to>`](#compare-rn-from-to) | "What changes between two RN versions' native requirements?" (no project needed) |
 | [`why <package>`](#why-package) | "Why is this package installed, and through what path?" |
 | [`tree [package]`](#tree-package) | "What does my dependency tree look like?" |
@@ -157,13 +158,16 @@ recommended version per package (via `data/compatibility.ts`) instead of always 
 absolute latest — useful when the newest major of a package requires a React Native version your
 project hasn't reached yet.
 
-### `upgrade --to <version>`
+### `upgrade`
 
 ```bash
 rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+rn-dep-scanner upgrade --latest [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
-`--to` is required. Assesses readiness to upgrade React Native to a target version by combining:
+One of `--to <version>` or `--latest` is required. `--latest` resolves the target version from
+npm's `react-native` `latest` dist-tag instead of you having to look it up yourself. Assesses
+readiness to upgrade React Native to the target version by combining:
 
 - breaking changes, each classified as `historical` (already true before your *current* RN
   version — not caused by this specific upgrade, doesn't affect risk), `relevant`, or
@@ -177,6 +181,14 @@ Produces a `low`/`medium`/`high` `risk` score and a `READY`/`WARN`/`BLOCKED` `ve
 separate `envVerdict` covering just the native-toolchain checks (useful when you only care
 whether the machine itself can build, independent of JS migration work). `--all-workspaces`
 assesses every workspace package in the monorepo and aggregates the results.
+
+When the current and target versions are more than one RN minor apart, the result also includes
+an `upgradePath` — the same readiness assessment run once per known intermediate minor version
+(e.g. jumping from 0.70 straight to 0.75 is assessed, but so is 0.70→0.71→0.72→0.73→0.74→0.75),
+since skipping versions compounds breaking-change risk non-linearly and an incremental path is
+often lower-risk overall even though it's more commits. Omitted entirely when the two versions
+are adjacent (nothing known sits between them) — see "Suggested Incremental Path" in human
+output, or the `upgradePath` array in `--json`.
 
 ### `compare-rn <from> <to>`
 

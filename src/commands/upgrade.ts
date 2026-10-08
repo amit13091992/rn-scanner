@@ -1,15 +1,8 @@
 import { getAllDependenciesWithResolution, readPackageJson } from '../utils/packageJson.js';
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
-import { analyzeBreakingChanges } from '../analyzers/breakingChanges.js';
-import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
-import { analyzeAndroidEnvironment } from '../analyzers/androidEnvironment.js';
-import { analyzeIosEnvironment } from '../analyzers/iosEnvironment.js';
-import { analyzeNodeEnvironment } from '../analyzers/nodeEnvironment.js';
-import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
-import { detectDuplicateDependencies } from '../utils/versionDetection.js';
-import type { DependencyInfo } from '../types/dependency.js';
-import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
-import { verdictFromRequirements, combineVerdicts } from '../utils/verdict.js';
+import { assessUpgradeReadiness, type UpgradeReadinessResult } from '../analyzers/upgradeReadiness.js';
+import { planUpgradePath } from '../analyzers/upgradePath.js';
+import { fetchLatestVersion } from '../utils/npmRegistry.js';
 import {
   printHeader,
   printSection,
@@ -28,12 +21,9 @@ export interface UpgradeOptions {
   /** Assess upgrade readiness for every workspace package in the monorepo, not just `cwd`,
    *  and aggregate the results into one report. */
   allWorkspaces?: boolean;
-}
-
-type RiskLevel = 'low' | 'medium' | 'high';
-
-function envIssues(requirements: EnvironmentRequirement[]): EnvironmentRequirement[] {
-  return requirements.filter((r) => r.status === 'error' || r.status === 'warning');
+  /** Resolve the target version from npm's `react-native` `latest` dist-tag instead of
+   *  requiring an explicit `toVersion`. */
+  latest?: boolean;
 }
 
 async function runAcrossWorkspaces(toVersion: string, cwd: string, options: UpgradeOptions): Promise<void> {
@@ -80,12 +70,44 @@ async function runAcrossWorkspaces(toVersion: string, cwd: string, options: Upgr
   }
 }
 
-export async function upgradeCommand(toVersion: string, options: UpgradeOptions = {}): Promise<void> {
+interface UpgradePathStep {
+  from: string | null;
+  to: string;
+  risk: UpgradeReadinessResult['risk'];
+  verdict: UpgradeReadinessResult['verdict'];
+}
+
+export async function upgradeCommand(toVersion: string | undefined, options: UpgradeOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
   const jsonMode = !!options.json || !!options.html;
 
+  let resolvedToVersion = toVersion;
+  if (options.latest) {
+    resolvedToVersion = await fetchLatestVersion('react-native');
+    if (!resolvedToVersion) {
+      const message = "Could not resolve react-native's latest published version from the npm registry";
+      if (jsonMode) {
+        emitStructuredOutput({ error: message }, 'Upgrade Readiness', options);
+      } else {
+        printError(message);
+      }
+      process.exit(1);
+      return;
+    }
+  }
+  if (!resolvedToVersion) {
+    const message = 'No target version given — pass --to <version> or --latest';
+    if (jsonMode) {
+      emitStructuredOutput({ error: message }, 'Upgrade Readiness', options);
+    } else {
+      printError(message);
+    }
+    process.exit(1);
+    return;
+  }
+
   if (options.allWorkspaces) {
-    return runAcrossWorkspaces(toVersion, cwd, options);
+    return runAcrossWorkspaces(resolvedToVersion, cwd, { ...options, latest: false });
   }
 
   try {
@@ -94,97 +116,49 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
     const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
     const currentVersion = rnInfo.version;
 
-    // Evaluate breaking changes as if react-native were already upgraded to the target
-    // version, so rules keyed on the target's version range are surfaced (not just rules
-    // that already match the currently-installed version).
-    const dependenciesAtTarget: DependencyInfo[] = dependencies.map((dep) =>
-      dep.name === 'react-native'
-        ? { ...dep, resolvedVersion: toVersion, requestedVersion: toVersion }
-        : dep
-    );
-    const breakingChanges = analyzeBreakingChanges(dependenciesAtTarget, dependencies, true).filter(
-      (r): r is typeof r & { issue: NonNullable<typeof r.issue> } => r.detected && r.issue !== undefined
-    );
+    const assessment = assessUpgradeReadiness(dependencies, cwd, resolvedToVersion);
+    const { risk, verdict, envVerdict, breakingChanges, relevantBreakingChangeCount, newArchitecture, nodeEnvironment, androidEnvironment, iosEnvironment, deprecatedPackages, duplicateDependencies } = assessment;
+    const nodeIssues = nodeEnvironment.filter((r) => r.status === 'error' || r.status === 'warning');
+    const androidIssues = androidEnvironment.filter((r) => r.status === 'error' || r.status === 'warning');
+    const iosIssues = iosEnvironment.filter((r) => r.status === 'error' || r.status === 'warning');
 
-    const newArch = analyzeNewArchitecture(dependencies, toVersion);
-    const newArchIssues = newArch.results.filter(
-      (r) => r.support === 'unsupported' || r.support === 'partial'
-    );
-
-    const androidEnvironment = analyzeAndroidEnvironment(cwd, toVersion);
-    const iosEnvironment = analyzeIosEnvironment(cwd, toVersion);
-    const nodeEnvironment = analyzeNodeEnvironment(toVersion);
-    const androidIssues = envIssues(androidEnvironment);
-    const iosIssues = envIssues(iosEnvironment);
-    const nodeIssues = envIssues(nodeEnvironment);
-
-    const deprecatedPkgs = checkDeprecatedPackages(dependencies.map((d) => d.name));
-    const duplicates = detectDuplicateDependencies(dependencies);
-
-    // Only changes newly relevant to *this* upgrade (i.e. not already true before it) should
-    // drive risk — a change introduced before the project's current RN version is historical
-    // and shouldn't block an unrelated upgrade.
-    const relevantBreakingChanges = breakingChanges.filter((c) => c.issue.relevance !== 'historical');
-    const criticalBreaking = relevantBreakingChanges.filter((c) => c.issue.severity === 'critical').length;
-    const newArchUnsupported = newArchIssues.filter((i) => i.support === 'unsupported').length;
-    const androidErrors = androidIssues.filter((i) => i.status === 'error').length;
-    const iosErrors = iosIssues.filter((i) => i.status === 'error').length;
-    const nodeErrors = nodeIssues.filter((i) => i.status === 'error').length;
-
-    let risk: RiskLevel = 'low';
-    if (criticalBreaking > 0 || newArchUnsupported > 0 || androidErrors > 0 || iosErrors > 0 || nodeErrors > 0) {
-      risk = 'high';
-    } else if (
-      relevantBreakingChanges.length > 0 ||
-      newArchIssues.length > 0 ||
-      androidIssues.length > 0 ||
-      iosIssues.length > 0 ||
-      nodeIssues.length > 0
-    ) {
-      risk = 'medium';
+    // Jumping several RN minors in one go compounds breaking-change risk non-linearly, so when
+    // there are known intermediate versions between the current and target version, assess each
+    // hop too and surface it as a lower-risk alternative to the single direct jump above.
+    const hops = planUpgradePath(currentVersion, resolvedToVersion);
+    let upgradePath: UpgradePathStep[] | undefined;
+    if (hops.length > 1) {
+      let hopFrom = currentVersion;
+      upgradePath = hops.map((hopTo) => {
+        const hopAssessment = assessUpgradeReadiness(dependencies, cwd, hopTo);
+        const step: UpgradePathStep = { from: hopFrom, to: hopTo, risk: hopAssessment.risk, verdict: hopAssessment.verdict };
+        hopFrom = hopTo;
+        return step;
+      });
     }
-
-    // verdict is a READY/WARN/BLOCKED restatement of `risk`, kept as a distinct field so
-    // consumers can match on the literal contract without depending on the risk vocabulary.
-    const verdict = risk === 'high' ? 'BLOCKED' : risk === 'medium' ? 'WARN' : 'READY';
-    // envVerdict rolls up just the native-toolchain checks (node/android/ios), independent of
-    // breaking-change/New Architecture severity — useful when a caller only cares whether the
-    // machine itself is ready to build, not whether the JS dependency graph has migration work.
-    const envVerdict = combineVerdicts([
-      verdictFromRequirements(nodeEnvironment),
-      verdictFromRequirements(androidEnvironment),
-      verdictFromRequirements(iosEnvironment),
-    ]);
 
     if (jsonMode) {
       const result = {
         from: currentVersion,
-        to: toVersion,
+        to: resolvedToVersion,
         risk,
         verdict,
         envVerdict,
-        breakingChanges: breakingChanges.map((c) => c.issue),
-        relevantBreakingChangeCount: relevantBreakingChanges.length,
-        newArchitecture: {
-          isDefaultAtTarget: newArch.status.isNewArchDefault,
-          isBridgeRemovedAtTarget: newArch.status.isBridgeRemoved,
-          issues: newArchIssues,
-        },
+        breakingChanges,
+        relevantBreakingChangeCount,
+        newArchitecture,
         nodeEnvironment,
         androidEnvironment,
         iosEnvironment,
-        deprecatedPackages: deprecatedPkgs.map((p) => ({
-          name: p.name,
-          reason: p.info.reason,
-          replacement: p.info.replacement,
-        })),
-        duplicateDependencies: duplicates,
+        deprecatedPackages,
+        duplicateDependencies,
+        ...(upgradePath ? { upgradePath } : {}),
       };
       emitStructuredOutput(result, 'Upgrade Readiness', options);
       return;
     }
 
-    printHeader(`Upgrade Readiness: ${currentVersion ?? 'unknown'} → ${toVersion}`);
+    printHeader(`Upgrade Readiness: ${currentVersion ?? 'unknown'} → ${resolvedToVersion}`);
 
     const riskLabel = risk === 'high' ? '🔴 HIGH' : risk === 'medium' ? '🟠 MEDIUM' : '✓ LOW';
     const verdictLabel = verdict === 'BLOCKED' ? '🔴 BLOCKED' : verdict === 'WARN' ? '🟠 WARN' : '✓ READY';
@@ -194,30 +168,30 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
     if (breakingChanges.length === 0) {
       printSuccess('No known breaking changes for this upgrade');
     } else {
-      breakingChanges.forEach((c) => {
-        const icon = c.issue.severity === 'critical' ? '🔴 CRITICAL' : c.issue.severity === 'high' ? '🟠 HIGH' : '🟡 MEDIUM';
-        const relevanceLabel = c.issue.relevance === 'historical'
+      breakingChanges.forEach((issue) => {
+        const icon = issue.severity === 'critical' ? '🔴 CRITICAL' : issue.severity === 'high' ? '🟠 HIGH' : '🟡 MEDIUM';
+        const relevanceLabel = issue.relevance === 'historical'
           ? ' [historical — already true before this upgrade, does not affect verdict]'
-          : c.issue.relevance === 'action_required'
+          : issue.relevance === 'action_required'
             ? ' [action required for this upgrade]'
             : ' [relevant to this upgrade]';
-        console.log(`\n${icon}  ${c.issue.package}@${c.issue.version} (since ${c.issue.introducedInVersion})${relevanceLabel}`);
-        c.issue.changes.forEach((msg) => console.log(`  • ${msg}`));
-        if (c.issue.migrationGuide) console.log(`  Migration guide: ${c.issue.migrationGuide}`);
+        console.log(`\n${icon}  ${issue.package}@${issue.version} (since ${issue.introducedInVersion})${relevanceLabel}`);
+        issue.changes.forEach((msg) => console.log(`  • ${msg}`));
+        if (issue.migrationGuide) console.log(`  Migration guide: ${issue.migrationGuide}`);
       });
     }
 
     printSection('New Architecture');
-    if (newArch.status.isNewArchDefault) {
-      if (newArch.status.isBridgeRemoved) {
-        printInfo(`React Native ${toVersion} removes the legacy bridge — New Architecture is mandatory`);
+    if (newArchitecture.isDefaultAtTarget) {
+      if (newArchitecture.isBridgeRemovedAtTarget) {
+        printInfo(`React Native ${resolvedToVersion} removes the legacy bridge — New Architecture is mandatory`);
       } else {
-        printInfo(`React Native ${toVersion} defaults to the New Architecture`);
+        printInfo(`React Native ${resolvedToVersion} defaults to the New Architecture`);
       }
-      if (newArchIssues.length === 0) {
+      if (newArchitecture.issues.length === 0) {
         printSuccess('No known New Architecture incompatibilities in current dependencies');
       } else {
-        newArchIssues.forEach((issue) => {
+        newArchitecture.issues.forEach((issue) => {
           if (issue.support === 'unsupported') {
             printError(`${issue.package}@${issue.version} does not support the New Architecture`);
           } else {
@@ -227,7 +201,7 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
         });
       }
     } else {
-      printInfo(`React Native ${toVersion} does not default to the New Architecture`);
+      printInfo(`React Native ${resolvedToVersion} does not default to the New Architecture`);
     }
 
     printSection('Node.js Environment');
@@ -266,20 +240,29 @@ export async function upgradeCommand(toVersion: string, options: UpgradeOptions 
       });
     }
 
-    if (deprecatedPkgs.length > 0) {
+    if (deprecatedPackages.length > 0) {
       printSection('Deprecated Packages');
-      deprecatedPkgs.forEach((dep) => {
+      deprecatedPackages.forEach((dep) => {
         printWarning(`${dep.name} is deprecated`);
-        console.log(`  Reason: ${dep.info.reason}`);
-        if (dep.info.replacement) console.log(`  Use instead: ${dep.info.replacement}`);
+        console.log(`  Reason: ${dep.reason}`);
+        if (dep.replacement) console.log(`  Use instead: ${dep.replacement}`);
       });
     }
 
-    if (duplicates.length > 0) {
+    if (duplicateDependencies.length > 0) {
       printSection('Duplicate Dependencies');
-      duplicates.forEach((dup) => {
+      duplicateDependencies.forEach((dup) => {
         const icon = dup.severity === 'critical' ? '🔴 CRITICAL' : dup.severity === 'high' ? '🟠 HIGH' : '🟡 MEDIUM';
         console.log(`${icon}  ${dup.package}: ${dup.versions.join(', ')}`);
+      });
+    }
+
+    if (upgradePath) {
+      printSection('Suggested Incremental Path');
+      printInfo(`Jumping straight to ${resolvedToVersion} is ${risk} risk — consider upgrading through known intermediate versions instead:`);
+      upgradePath.forEach((step) => {
+        const stepIcon = step.verdict === 'BLOCKED' ? '🔴' : step.verdict === 'WARN' ? '🟠' : '✓';
+        console.log(`  ${stepIcon} ${step.from ?? 'unknown'} → ${step.to}  (risk: ${step.risk})`);
       });
     }
   } catch (error) {

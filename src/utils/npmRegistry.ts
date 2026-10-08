@@ -2,7 +2,13 @@ const REGISTRY_BASE = 'https://registry.npmjs.org';
 const FETCH_TIMEOUT_MS = 5000;
 const CONCURRENCY = 10;
 
-async function fetchLatestVersion(name: string): Promise<string | undefined> {
+/**
+ * Looks up the single latest published version for one package (npm's `dist-tags.latest`,
+ * via the `/latest` endpoint). Exported for callers that need just one package resolved
+ * (e.g. `upgrade --latest` resolving react-native's own current stable) without paying for
+ * `fetchLatestVersions`' batch/dedup machinery built for many package names at once.
+ */
+export async function fetchLatestVersion(name: string): Promise<string | undefined> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
