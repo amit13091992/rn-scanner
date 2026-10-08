@@ -188,3 +188,40 @@ test('checkCommand - a fatal error (unreadable package.json) reports json error 
     cleanup(dir);
   }
 });
+
+test('checkCommand - --strict exits 1 when an unsupported New Architecture package is present on a bridge-removed RN version', async () => {
+  const dir = makeTempDir();
+  try {
+    writeProject(dir, {
+      'react-native': '0.82.0',
+      react: '18.3.1',
+      '@react-native-community/async-storage': '1.0.0',
+    });
+
+    const { output, exitCode } = await captureStdout(() =>
+      checkCommand({ cwd: dir, json: true, strict: true, security: false })
+    );
+    const result = JSON.parse(output);
+
+    assert.equal(result.newArchitecture.isBridgeRemoved, true);
+    assert.ok(result.newArchitecture.issues.some((i: { package: string; support: string }) => i.package === '@react-native-community/async-storage' && i.support === 'unsupported'));
+    assert.equal(exitCode, 1);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('checkCommand - --strict does not exit 1 for a project with no New Architecture issues', async () => {
+  const dir = makeTempDir();
+  try {
+    writeProject(dir, { 'react-native': '0.75.0', react: '18.3.1', 'left-pad': '1.3.0' });
+
+    const { exitCode } = await captureStdout(() =>
+      checkCommand({ cwd: dir, json: true, strict: true, security: false })
+    );
+
+    assert.equal(exitCode, undefined);
+  } finally {
+    cleanup(dir);
+  }
+});

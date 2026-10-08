@@ -62,6 +62,12 @@ export interface CheckOptions {
 export async function checkCommand(options: CheckOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
   const profiler = new Profiler(!!options.profile);
+  // Set inside the try block and read after it closes, so a non-zero exit is decided outside
+  // the try/catch — calling `process.exit` from within `try` would otherwise be caught by this
+  // function's own `catch` (a real concern in tests, where `process.exit` is stubbed to throw)
+  // and misreported as a fatal error alongside the already-printed successful result. Same
+  // pattern as `commands/security.ts`.
+  let shouldExitStrict = false;
 
   try {
     const jsonMode = !!options.json || !!options.html;
@@ -230,6 +236,9 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           newArchIssues.forEach((issue) => {
             if (issue.support === 'unsupported') {
               printError(`${issue.package}@${issue.version} does not support the New Architecture`);
+              if (newArch.status.isBridgeRemoved) {
+                console.log('  └─ No legacy-bridge opt-out exists on this React Native version — this will break the build, not just degrade at runtime.');
+              }
             } else {
               printWarning(`${issue.package}@${issue.version} has partial New Architecture support`);
             }
@@ -586,9 +595,11 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const criticalOrHighVulns = securityResult
       ? securityResult.summary.critical + securityResult.summary.high
       : 0;
-    if (options.strict && (errors > 0 || criticalOrHighVulns > 0 || aiSdkExposure.keyExposures.length > 0)) {
-      process.exit(1);
-    }
+    // newArchUnsupported gates --strict unconditionally when RN >=0.76 defaults to New
+    // Architecture, and is strictly more severe once RN >=0.82 removes the legacy bridge
+    // entirely (newArch.status.isBridgeRemoved) — there is no opt-out left at that point, so an
+    // unsupported native module is a build-breaker, not just a compatibility warning.
+    shouldExitStrict = !!options.strict && (errors > 0 || criticalOrHighVulns > 0 || aiSdkExposure.keyExposures.length > 0 || newArchUnsupported > 0);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (options.json || options.html) {
@@ -596,6 +607,11 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     } else {
       printError(`Fatal error: ${message}`);
     }
+    process.exit(1);
+    return;
+  }
+
+  if (shouldExitStrict) {
     process.exit(1);
   }
 }
