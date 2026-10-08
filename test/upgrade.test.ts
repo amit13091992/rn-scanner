@@ -158,3 +158,30 @@ test('upgradeCommand - human output prints a header and risk line', async () => 
     cleanup(dir);
   }
 });
+
+test('upgradeCommand - --all-workspaces aggregates readiness across every workspace package', async () => {
+  const root = makeTempDir();
+  try {
+    const sharedDir = join(root, 'packages', 'shared');
+    const appDir = join(root, 'packages', 'mobile-app');
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(appDir, { recursive: true });
+
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'monorepo-root', private: true, workspaces: ['packages/*'] }));
+    writeFileSync(join(root, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {} } }));
+    writeFileSync(join(sharedDir, 'package.json'), JSON.stringify({ name: '@acme/shared', version: '1.0.0' }));
+    writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', dependencies: { 'react-native': '0.72.0', react: '18.2.0' } }));
+
+    const { output } = await captureStdout(() =>
+      upgradeCommand('0.75', { cwd: appDir, json: true, allWorkspaces: true })
+    );
+    const result = JSON.parse(output);
+
+    assert.equal(result.workspaces.length, 2);
+    const mobileApp = result.workspaces.find((w: { package: string }) => w.package === 'mobile-app');
+    assert.equal(mobileApp.to, '0.75');
+    assert.ok(mobileApp.verdict);
+  } finally {
+    cleanup(root);
+  }
+});

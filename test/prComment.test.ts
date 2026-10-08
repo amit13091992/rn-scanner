@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { formatVerdictComment, PR_COMMENT_MARKER } from '../src/utils/prComment.js';
+import { formatVerdictComment, formatAggregatedVerdictComment, worstVerdict, PR_COMMENT_MARKER } from '../src/utils/prComment.js';
 import type { EnvironmentRequirement } from '../src/types/environmentRequirement.js';
 
 const okReq: EnvironmentRequirement = { name: 'JDK', current: '17', required: '17', status: 'ok' };
@@ -92,4 +92,38 @@ test('formatVerdictComment - empty sections are omitted, not printed as empty', 
     iosEnvironment: [],
   });
   assert.match(body, /No environment requirements were checked\./);
+});
+
+test('formatAggregatedVerdictComment - rolls up the worst verdict across packages and keeps the same marker', () => {
+  const body = formatAggregatedVerdictComment({
+    kind: 'doctor',
+    packages: [
+      { package: '@acme/shared', verdict: 'READY', nodeEnvironment: [okReq], androidEnvironment: [], iosEnvironment: [] },
+      { package: 'mobile-app', verdict: 'BLOCKED', reactNativeVersion: '0.87', nodeEnvironment: [errorReq], androidEnvironment: [], iosEnvironment: [] },
+    ],
+  });
+
+  assert.ok(body.startsWith(PR_COMMENT_MARKER));
+  assert.match(body, /Overall verdict:\*\* 🔴 BLOCKED \(worst of 2 workspace package\(s\)\)/);
+  assert.match(body, /<summary>✅ READY <strong>@acme\/shared<\/strong><\/summary>/);
+  assert.match(body, /<summary>🔴 BLOCKED <strong>mobile-app<\/strong> \(RN 0\.87\)<\/summary>/);
+});
+
+test('worstVerdict - BLOCKED beats WARN beats READY regardless of order', () => {
+  assert.equal(worstVerdict(['READY', 'WARN']), 'WARN');
+  assert.equal(worstVerdict(['BLOCKED', 'READY']), 'BLOCKED');
+  assert.equal(worstVerdict(['WARN', 'BLOCKED', 'READY']), 'BLOCKED');
+  assert.equal(worstVerdict(['READY', 'READY']), 'READY');
+});
+
+test('formatAggregatedVerdictComment - an upgrade heading includes the target version', () => {
+  const body = formatAggregatedVerdictComment({
+    kind: 'upgrade',
+    to: '0.87',
+    packages: [
+      { package: 'mobile-app', verdict: 'WARN', nodeEnvironment: [warnReq], androidEnvironment: [], iosEnvironment: [] },
+    ],
+  });
+
+  assert.match(body, /Upgrade Readiness \(all workspaces\) → 0\.87/);
 });

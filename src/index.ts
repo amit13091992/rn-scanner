@@ -441,11 +441,13 @@ program
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
+  .option('--all-workspaces', 'Assess every workspace package in the monorepo, not just --cwd, and aggregate the results')
   .action(async (options) => {
     await upgradeCommand(options.to, {
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
+      allWorkspaces: options.allWorkspaces || false,
     });
   });
 

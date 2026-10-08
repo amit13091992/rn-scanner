@@ -31,6 +31,33 @@ export interface UpgradeCommentInput {
 
 export type VerdictCommentInput = DoctorCommentInput | UpgradeCommentInput;
 
+const VERDICT_SEVERITY: Record<Verdict, number> = { READY: 0, WARN: 1, BLOCKED: 2 };
+
+/** The worst (most severe) of a set of verdicts — READY < WARN < BLOCKED. Used to roll up a
+ *  `--all-workspaces` run's per-package verdicts into a single overall one for the PR comment. */
+export function worstVerdict(verdicts: Verdict[]): Verdict {
+  return verdicts.reduce<Verdict>(
+    (worst, v) => (VERDICT_SEVERITY[v] > VERDICT_SEVERITY[worst] ? v : worst),
+    'READY'
+  );
+}
+
+export interface WorkspacePackageVerdict {
+  package: string;
+  verdict: Verdict;
+  reactNativeVersion?: string;
+  nodeEnvironment: EnvironmentRequirement[];
+  androidEnvironment: EnvironmentRequirement[];
+  iosEnvironment: EnvironmentRequirement[];
+}
+
+export interface AggregatedVerdictCommentInput {
+  kind: 'doctor' | 'upgrade';
+  /** Upgrade target version, for the heading — ignored for kind: 'doctor'. */
+  to?: string;
+  packages: WorkspacePackageVerdict[];
+}
+
 function renderSection(title: string, requirements: EnvironmentRequirement[]): string | undefined {
   if (requirements.length === 0) return undefined;
 
@@ -77,6 +104,50 @@ export function formatVerdictComment(input: VerdictCommentInput): string {
     `**Verdict:** ${VERDICT_BADGE[input.verdict]}`,
     '',
     body,
+    '',
+    '<sub>Posted by [rn-dep-scanner](https://www.npmjs.com/package/rn-dep-scanner) — re-run to refresh this comment.</sub>',
+  ].join('\n');
+}
+
+/**
+ * Same contract as `formatVerdictComment`, for a `--all-workspaces` run: one PR comment
+ * (same `PR_COMMENT_MARKER`, so it still updates in place) covering every workspace package,
+ * with an overall verdict rolled up via `worstVerdict` plus a collapsible section per package
+ * (left expanded when that package isn't READY, so the thing that needs attention is visible
+ * without an extra click).
+ */
+export function formatAggregatedVerdictComment(input: AggregatedVerdictCommentInput): string {
+  const overall = worstVerdict(input.packages.map((p) => p.verdict));
+  const heading =
+    input.kind === 'doctor'
+      ? 'React Native Environment Preflight (all workspaces)'
+      : `Upgrade Readiness (all workspaces) → ${input.to ?? 'unknown'}`;
+
+  const packageSections = input.packages.map((p) => {
+    const sections = [
+      renderSection('Node.js', p.nodeEnvironment),
+      renderSection('Android', p.androidEnvironment),
+      renderSection('iOS', p.iosEnvironment),
+    ].filter((section): section is string => section !== undefined);
+    const body = sections.length > 0 ? sections.join('\n\n') : 'No environment requirements were checked.';
+
+    return [
+      `<details${p.verdict !== 'READY' ? ' open' : ''}>`,
+      `<summary>${VERDICT_BADGE[p.verdict]} <strong>${p.package}</strong>${p.reactNativeVersion ? ` (RN ${p.reactNativeVersion})` : ''}</summary>`,
+      '',
+      body,
+      '',
+      '</details>',
+    ].join('\n');
+  });
+
+  return [
+    PR_COMMENT_MARKER,
+    `### ${heading}`,
+    '',
+    `**Overall verdict:** ${VERDICT_BADGE[overall]} (worst of ${input.packages.length} workspace package(s))`,
+    '',
+    ...packageSections,
     '',
     '<sub>Posted by [rn-dep-scanner](https://www.npmjs.com/package/rn-dep-scanner) — re-run to refresh this comment.</sub>',
   ].join('\n');

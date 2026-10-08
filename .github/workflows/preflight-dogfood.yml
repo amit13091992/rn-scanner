@@ -38,3 +38,25 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: node ../../../scripts/post-pr-comment.mjs rn-dep-scanner-result.json doctor
+
+      - name: Smoke-test doctor --all-workspaces against a throwaway 2-package workspace
+        # Not posted as a PR comment (would collide with the single-package comment above,
+        # since both share PR_COMMENT_MARKER) — this only validates that the --all-workspaces
+        # CLI path itself runs and aggregates correctly in a real CI environment. The comment
+        # *formatting* for this path is covered by test/prComment.test.ts.
+        run: |
+          set -euo pipefail
+          WORKDIR=$(mktemp -d)
+          mkdir -p "$WORKDIR/packages/shared" "$WORKDIR/packages/mobile-app"
+          echo '{"name":"dogfood-root","private":true,"workspaces":["packages/*"]}' > "$WORKDIR/package.json"
+          echo '{"name":"@dogfood/shared","version":"1.0.0"}' > "$WORKDIR/packages/shared/package.json"
+          echo '{"name":"mobile-app","dependencies":{"react-native":"0.75.0","react":"18.3.1"}}' > "$WORKDIR/packages/mobile-app/package.json"
+          echo '{"lockfileVersion":3,"packages":{"":{}}}' > "$WORKDIR/package-lock.json"
+          node dist/index.js doctor --cwd "$WORKDIR/packages/mobile-app" --all-workspaces --json > all-workspaces-result.json
+          node -e "
+            const data = JSON.parse(require('fs').readFileSync('all-workspaces-result.json', 'utf8'));
+            if (!Array.isArray(data.workspaces) || data.workspaces.length !== 2) {
+              throw new Error('Expected a 2-package workspaces[] array, got: ' + JSON.stringify(data));
+            }
+            console.log('--all-workspaces aggregated', data.workspaces.length, 'packages as expected.');
+          "

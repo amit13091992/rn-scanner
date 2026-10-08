@@ -14,6 +14,20 @@ async function loadFormatter() {
   }
 }
 
+/** Builds the per-package input `formatAggregatedVerdictComment` expects from one entry of a
+ *  `--all-workspaces` result's `workspaces[]` array — same per-package shape `doctor`/`upgrade`
+ *  already produce, just read from under `{ package, dir, ...result }` instead of top-level. */
+function toWorkspacePackageVerdict(kind, entry) {
+  return {
+    package: entry.package,
+    verdict: entry.verdict,
+    reactNativeVersion: kind === 'doctor' ? entry.reactNative?.version : undefined,
+    nodeEnvironment: entry.nodeEnvironment ?? [],
+    androidEnvironment: entry.androidEnvironment ?? [],
+    iosEnvironment: entry.iosEnvironment ?? [],
+  };
+}
+
 function readEventPayload() {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) return undefined;
@@ -42,29 +56,37 @@ async function main() {
   }
 
   const result = JSON.parse(readFileSync(resultPath, 'utf8'));
-  const { formatVerdictComment, PR_COMMENT_MARKER } = await loadFormatter();
+  const { formatVerdictComment, formatAggregatedVerdictComment, PR_COMMENT_MARKER } = await loadFormatter();
 
-  const input =
-    kind === 'upgrade'
-      ? {
-          kind: 'upgrade',
-          from: result.from,
-          to: result.to,
-          verdict: result.verdict,
-          nodeEnvironment: result.nodeEnvironment ?? [],
-          androidEnvironment: result.androidEnvironment ?? [],
-          iosEnvironment: result.iosEnvironment ?? [],
-        }
-      : {
-          kind: 'doctor',
-          reactNativeVersion: result.reactNative?.version,
-          verdict: result.verdict,
-          nodeEnvironment: result.nodeEnvironment ?? [],
-          androidEnvironment: result.androidEnvironment ?? [],
-          iosEnvironment: result.iosEnvironment ?? [],
-        };
-
-  const body = formatVerdictComment(input);
+  // A `--all-workspaces` run's result has a top-level `workspaces[]` array instead of its own
+  // `verdict`/`nodeEnvironment`/etc. — same marker, so it still updates the same comment in
+  // place, but rendered as one combined comment covering every workspace package.
+  const body = Array.isArray(result.workspaces)
+    ? formatAggregatedVerdictComment({
+        kind,
+        to: kind === 'upgrade' ? result.workspaces[0]?.to : undefined,
+        packages: result.workspaces.map((entry) => toWorkspacePackageVerdict(kind, entry)),
+      })
+    : formatVerdictComment(
+        kind === 'upgrade'
+          ? {
+              kind: 'upgrade',
+              from: result.from,
+              to: result.to,
+              verdict: result.verdict,
+              nodeEnvironment: result.nodeEnvironment ?? [],
+              androidEnvironment: result.androidEnvironment ?? [],
+              iosEnvironment: result.iosEnvironment ?? [],
+            }
+          : {
+              kind: 'doctor',
+              reactNativeVersion: result.reactNative?.version,
+              verdict: result.verdict,
+              nodeEnvironment: result.nodeEnvironment ?? [],
+              androidEnvironment: result.androidEnvironment ?? [],
+              iosEnvironment: result.iosEnvironment ?? [],
+            }
+      );
 
   const apiBase = `https://api.github.com/repos/${repo}`;
   const headers = {

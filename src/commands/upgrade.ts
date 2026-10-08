@@ -19,11 +19,15 @@ import {
   printInfo,
 } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
 
 export interface UpgradeOptions {
   json?: boolean;
   html?: HtmlOption;
   cwd?: string;
+  /** Assess upgrade readiness for every workspace package in the monorepo, not just `cwd`,
+   *  and aggregate the results into one report. */
+  allWorkspaces?: boolean;
 }
 
 type RiskLevel = 'low' | 'medium' | 'high';
@@ -32,9 +36,57 @@ function envIssues(requirements: EnvironmentRequirement[]): EnvironmentRequireme
   return requirements.filter((r) => r.status === 'error' || r.status === 'warning');
 }
 
+async function runAcrossWorkspaces(toVersion: string, cwd: string, options: UpgradeOptions): Promise<void> {
+  const jsonMode = !!options.json || !!options.html;
+  const targets = listWorkspaceTargets(cwd);
+
+  if (targets.length === 0) {
+    return upgradeCommand(toVersion, { ...options, allWorkspaces: false });
+  }
+
+  if (!jsonMode) {
+    printHeader(`Upgrade Readiness: ${toVersion} (all workspaces)`);
+  }
+
+  let anyExit = false;
+  const perPackageResults: Array<Record<string, unknown>> = [];
+
+  for (const target of targets) {
+    if (!jsonMode) {
+      printSection(`Workspace package: ${target.name}`);
+    }
+    const { output, exitCode } = await runCapturingExit(() =>
+      upgradeCommand(toVersion, { ...options, cwd: target.dir, allWorkspaces: false, json: jsonMode, html: false })
+    );
+    if (exitCode) anyExit = true;
+
+    if (jsonMode) {
+      try {
+        perPackageResults.push({ ...JSON.parse(output), package: target.name, dir: target.dir });
+      } catch {
+        perPackageResults.push({ package: target.name, dir: target.dir, error: 'Could not parse result' });
+      }
+    } else {
+      console.log(output.replace(/\n$/, ''));
+    }
+  }
+
+  if (jsonMode) {
+    emitStructuredOutput({ workspaces: perPackageResults }, 'Upgrade Readiness (all workspaces)', options);
+  }
+
+  if (anyExit) {
+    process.exit(1);
+  }
+}
+
 export async function upgradeCommand(toVersion: string, options: UpgradeOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
   const jsonMode = !!options.json || !!options.html;
+
+  if (options.allWorkspaces) {
+    return runAcrossWorkspaces(toVersion, cwd, options);
+  }
 
   try {
     const packageJson = readPackageJson(cwd);

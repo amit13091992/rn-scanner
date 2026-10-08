@@ -19,6 +19,13 @@ inputs:
     description: 'Directory containing the React Native project to scan.'
     required: false
     default: '.'
+  all-workspaces:
+    description: >
+      Scan every workspace package in the monorepo containing working-directory, not just
+      working-directory itself, and post one PR comment covering all of them (overall verdict
+      is the worst of any package's verdict). A no-op outside a workspace.
+    required: false
+    default: 'false'
   scanner-version:
     description: 'npm version of rn-dep-scanner to install.'
     required: false
@@ -46,14 +53,28 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
+        ALL_WORKSPACES_FLAG=""
+        if [ "${{ inputs.all-workspaces }}" = "true" ]; then
+          ALL_WORKSPACES_FLAG="--all-workspaces"
+        fi
         if [ -n "${{ inputs.target-version }}" ]; then
-          npx rn-dep-scanner upgrade --to "${{ inputs.target-version }}" --json > rn-dep-scanner-result.json
+          npx rn-dep-scanner upgrade --to "${{ inputs.target-version }}" --json $ALL_WORKSPACES_FLAG > rn-dep-scanner-result.json
           echo "kind=upgrade" >> "$GITHUB_OUTPUT"
         else
-          npx rn-dep-scanner doctor --json > rn-dep-scanner-result.json
+          npx rn-dep-scanner doctor --json $ALL_WORKSPACES_FLAG > rn-dep-scanner-result.json
           echo "kind=doctor" >> "$GITHUB_OUTPUT"
         fi
-        VERDICT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('rn-dep-scanner-result.json','utf8')).verdict)")
+        # A `--all-workspaces` result has a top-level `workspaces[]` array instead of its own
+        # `verdict` — roll up the worst of every package's verdict for the action's own output.
+        VERDICT=$(node -e "
+          const data = JSON.parse(require('fs').readFileSync('rn-dep-scanner-result.json', 'utf8'));
+          const order = { READY: 0, WARN: 1, BLOCKED: 2 };
+          if (Array.isArray(data.workspaces)) {
+            console.log(data.workspaces.reduce((worst, p) => order[p.verdict] > order[worst] ? p.verdict : worst, 'READY'));
+          } else {
+            console.log(data.verdict);
+          }
+        ")
         echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
 
     - name: Post PR comment
@@ -70,6 +91,8 @@ runs:
 #
 # - uses: <owner>/rn-dep-scanner@v1
 #   with:
-#     target-version: '0.87'   # optional; omit to check the currently installed RN version
+#     target-version: '0.87'    # optional; omit to check the currently installed RN version
+#     all-workspaces: 'true'    # optional; scan every workspace package in the monorepo and
+#                                # post one comment covering all of them (default: 'false')
 #   permissions:
 #     pull-requests: write
