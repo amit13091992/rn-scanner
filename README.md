@@ -70,9 +70,11 @@ always the source of truth.
 | [`why <package>`](#why-package) | "Why is this package installed, and through what path?" |
 | [`tree [package]`](#tree-package) | "What does my dependency tree look like?" |
 | [`graph`](#graph) | "Give me the raw dependency graph as data (JSON/DOT)" |
+| [`ai-exposure`](#ai-exposure) | "Am I calling an AI provider directly from the client, or leaking its key?" |
 | [`security`](#security) | "Do any of my dependencies have known vulnerabilities?" (direct + transitive) |
 | [`licenses`](#licenses) | "What license is each dependency under?" |
 | [`sbom`](#sbom) | "Give me a CycloneDX SBOM" |
+| [`renovate-config`](#renovate-config) | "Give me a starter Renovate config that understands React Native" |
 | [`diff --from <dir> --to <dir>`](#diff---from-dir---to-dir) | "What changed (and did we add a vulnerability) between two project states?" |
 | [`policy`](#policy) | "Does this project violate our org's dependency rules?" |
 | [`baseline`](#baseline) | "What's *new* since we adopted this tool?" |
@@ -89,7 +91,10 @@ always the source of truth.
 
 Every command supports `--cwd <path>` (defaults to the current directory) unless noted
 otherwise, and every command with `--json` also supports `--html [path]` — see
-[Output formats](#output-formats---json----html).
+[Output formats](#output-formats---json----html). `check`/`doctor`/`why`/`tree`/`security`/
+`licenses`/`policy`/`upgrade` additionally support `--all-workspaces`, aggregating the same
+scan across every workspace package in the monorepo instead of just `--cwd` (a no-op outside a
+workspace).
 
 ---
 
@@ -155,7 +160,7 @@ project hasn't reached yet.
 ### `upgrade --to <version>`
 
 ```bash
-rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>]
+rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 `--to` is required. Assesses readiness to upgrade React Native to a target version by combining:
@@ -170,7 +175,8 @@ rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>]
 
 Produces a `low`/`medium`/`high` `risk` score and a `READY`/`WARN`/`BLOCKED` `verdict`, plus a
 separate `envVerdict` covering just the native-toolchain checks (useful when you only care
-whether the machine itself can build, independent of JS migration work).
+whether the machine itself can build, independent of JS migration work). `--all-workspaces`
+assesses every workspace package in the monorepo and aggregates the results.
 
 ### `compare-rn <from> <to>`
 
@@ -224,6 +230,22 @@ rn-dep-scanner graph --dot | dot -Tpng -o graph.png
 ---
 
 ## Security & supply chain
+
+### `ai-exposure`
+
+```bash
+rn-dep-scanner ai-exposure [--json] [--html [path]] [--cwd <path>]
+```
+
+Flags client-side AI exposure — a 2026 mobile-app risk category of its own: direct dependencies
+on an AI provider SDK (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`, `@ai-sdk/*`,
+`react-native-openai`, and more — see `src/data/aiSdkPackages.ts`) called straight from the
+client rather than proxied through a backend, which ships that provider's key inside the app
+bundle; and source literals shaped like a real AI provider key (OpenAI/Anthropic/Google/Groq/
+Cohere — see `src/data/aiKeyPatterns.ts`), reported by file/line/provider only — the matched
+text itself is never included in any output. Also runs as part of `check`'s default scan (its
+own "AI SDK Exposure" section / `aiSdkExposure` JSON key); `check --strict` exits 1 if a key
+literal is found.
 
 ### `security`
 
@@ -504,11 +526,15 @@ package).
   workspace package (`"@acme/shared": "workspace:^1.0.0"`) has that sibling cross-linked into
   the same dependency graph for yarn/pnpm/bun too — so a vulnerable package reachable only
   through a local workspace dependency is no longer invisible to `why`/`security`/etc.
-  `check`/`doctor`/`why`/`tree`/`security`/`licenses`/`policy` all support `--all-workspaces` to
-  run against every workspace package in one aggregated run instead of just `--cwd` (a no-op
-  outside a workspace). `--all-workspaces` combined with `--html <path>` isn't supported for
-  `check`/`doctor`/`why`/`tree` — each per-package sub-scan is captured as plain JSON internally
-  regardless of the outer `--html`, so only the final combined result respects it.
+  `check`/`doctor`/`why`/`tree`/`security`/`licenses`/`policy`/`upgrade` all support
+  `--all-workspaces` to run against every workspace package in one aggregated run instead of
+  just `--cwd` (a no-op outside a workspace), and the GitHub Action's `all-workspaces: 'true'`
+  input wires the same flag through to `doctor`/`upgrade` and posts one combined PR comment.
+  `--all-workspaces` combined with `--html <path>` isn't supported for
+  `check`/`doctor`/`why`/`tree`/`upgrade` — each per-package sub-scan is captured as plain JSON
+  internally regardless of the outer `--html`, so only the final combined result respects it.
+  A single run still only scans the workspace packages at the monorepo it's invoked from, not
+  multiple independent monorepos.
 - Bun lockfile parsing is less battle-tested than npm/yarn/pnpm.
 - The Android 16KB page-size check only inspects prebuilt `.so` files already present in
   `node_modules` (loose or `.aar`/`.jar`-packaged) — a package that compiles native code during
@@ -524,6 +550,15 @@ package).
 - `baseline` tracks security-vulnerability findings only; a compatibility warning or deprecated
   package isn't baselined.
 - `watch` has no CLI-exposed way to bound its iteration count — it runs until interrupted.
+- `security`'s known-malware check (`data/knownMalwarePackages.ts`) is a small hand-curated list
+  of confirmed incidents (Mini Shai-Hulud, ChainDrop, MALFEX), checked alongside — not instead
+  of — OSV.dev, specifically to close the gap where a live worm-strain incident hasn't been
+  given a GHSA ID yet. It is not a general malware scanner and won't catch an incident not
+  already added to the list.
+- `ai-exposure`'s API-key detection is shape-based (a regex matching what a real key looks
+  like), not a real secrets scanner — it can miss a key in an unexpected format and, rarely,
+  flag a random string that happens to match the shape. The AI-SDK-package list
+  (`data/aiSdkPackages.ts`) is curated and not exhaustive.
 
 ## Development
 

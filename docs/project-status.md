@@ -4,32 +4,56 @@ Tracks which components are in progress vs. completed, per `.claude/rules/docume
 Full command-by-command detail lives in `.claude/rules/architecture.md` and `.claude/rules/roadmap.md`;
 this is the short status summary those files don't have to keep updating.
 
-Last reviewed: 2026-09-22 (bug-report fix pass: upgrade breaking-change relevance, New Architecture
-`data_unavailable` rename, 16KB `not-checked` reason, `bin` exec bit, baseline/policy docs).
+Last reviewed: 2026-10-08 (2026-10 trends pass: AI/security exposure detection, full
+yarn/pnpm/bun transitive graph + workspace cross-linking, `--all-workspaces` everywhere,
+`renovate-config`, lint + workflow-validation CI tooling — see `.claude/rules/roadmap.md`'s
+"Phase 11" for the full list).
 
 ## Completed
 
-- Core `check` pipeline: compatibility, breaking changes, New Architecture, Expo/Expo-Go, dependency completeness, transitive OSV.dev security scan (npm full-graph; yarn/pnpm/bun direct-only).
+- Core `check` pipeline: compatibility, breaking changes, New Architecture (with a `--strict`
+  gate on any unsupported package), Expo/Expo-Go, dependency completeness, AI SDK client-call
+  + key-literal exposure, transitive OSV.dev security scan (npm, yarn, pnpm, and bun all build
+  a real transitive dependency graph, including sibling monorepo workspace packages
+  cross-linked in — no manager is direct-dependency-only anymore) plus a known-malware-incident
+  check (`data/knownMalwarePackages.ts`) that runs independent of network access.
 - `doctor`: RN/React + Hermes + Node/Android/iOS toolchain + 16KB page-size + overall verdict.
-- `upgrade --to`, `compare-rn`, `why`/`tree`/`graph` (npm full hierarchy; yarn/pnpm/bun direct-from-root only).
+- `upgrade --to`, `compare-rn`, `why`/`tree`/`graph` — same full transitive hierarchy as above
+  for all four package managers.
+- `outdated --recommend` — recommends the latest React-Native-compatible version per package,
+  not just npm's absolute latest.
+- `ai-exposure` and `renovate-config` commands (standalone views of the AI-exposure check and a
+  new RN-aware starter Renovate config generator, respectively).
 - Supply-chain/CI commands: `security`, `licenses`, `sbom`, `diff`, `policy`, `baseline`, `report`, `watch`.
 - Code-level analysis: `legacy-apis`, `unused`, `bundle`.
 - Standalone wrappers: `architecture`, `native`, `16kb`.
-- GitHub Action + PR comment integration (`action.yml`, `scripts/post-pr-comment.mjs`), dogfooded by `.github/workflows/preflight-dogfood.yml`.
-- CI: `.github/workflows/ci.yml` (build+test+`npm audit`, Node 18.x/20.x).
-- Monorepo *root-detection* (`utils/projectRoot.ts`) — a scan started inside a workspace package resolves against the monorepo root.
+- `--all-workspaces` on `check`/`doctor`/`why`/`tree`/`security`/`licenses`/`policy`/`upgrade` —
+  aggregates the same scan across every workspace package in the monorepo into one report,
+  instead of just `--cwd`'s single package.
+- GitHub Action + PR comment integration (`action.yml`, `scripts/post-pr-comment.mjs`), including
+  an `all-workspaces: 'true'` input that posts one combined PR comment across every workspace
+  package; dogfooded by `.github/workflows/preflight-dogfood.yml` (single-package path posts a
+  real comment; `--all-workspaces` path is smoke-tested against a throwaway fixture, not posted,
+  to avoid colliding with the single-package comment).
+- CI: `.github/workflows/ci.yml` — `build-and-test` job (build+test+lint+`npm audit`, Node
+  18.x/20.x) plus a `validate-workflows` job (`npm run validate:workflows`, schema-validates
+  `action.yml` and both workflow files via `@action-validator/cli`).
+- Monorepo *root-detection* (`utils/projectRoot.ts`) and full *workspace-hierarchy* resolution
+  (`utils/workspacePackages.ts`) — a scan started inside a workspace package resolves against
+  the monorepo root, and a sibling workspace package it depends on is a real graph node.
 - `--profile` opt-in step timing on `check`/`doctor` (`utils/profiler.ts`).
-- `.rn-dep-scanner.json` config with validation: `ignorePackages`, `ignoreVulnerabilities`, `licenseDenylist`, `bannedPackages`, `maxVulnerabilitySeverity`.
+- `.rn-dep-scanner.json` config with validation: `ignorePackages`, `ignoreVulnerabilities`,
+  `licenseDenylist`, `bannedPackages`, `maxVulnerabilitySeverity`, `customCompatibilityRules`.
 - Universal `--html [path]` output (`utils/htmlOutput.ts`) on every command that has `--json`, plus `sbom` — renders the same result data as a minimal HTML page instead of/alongside JSON.
+- ESLint (`eslint.config.js` — JS-syntax only, covers `scripts/**/*.mjs`; `src`/`test`
+  TypeScript linting is blocked upstream, see `known-limitations.md`).
 
 ## In progress / not started
 
-- Full yarn/pnpm/bun workspace **hierarchy** parsing (root-detection exists; transitive graph resolution for these managers does not — npm only).
-- Version-update recommendations (latest compatible versions).
-- Custom per-project compatibility rules.
+- Automated dependency graph export (beyond the existing `graph --json`/`--dot`).
 - Codemod support for migrations.
-- Lint tooling (no ESLint config exists; `tsc --strict` is the only static check).
-- `actionlint`/dry-run validation of `action.yml` and the two workflows.
+- `--all-workspaces` aggregates one monorepo's workspace packages; it does not aggregate across
+  multiple independent repos/monorepos in one invocation (not asked for yet, noting the boundary).
 
 ## Known documentation gaps
 
