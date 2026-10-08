@@ -114,6 +114,11 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
     ios: { xcode: '15.0', deploymentTarget: '13.4', cocoapods: '1.13.0', ruby: '2.7.4', swift: '5.0' },
   },
   {
+    // minSdk corrected 2026-10-08 from an estimated 23 to a confirmed 24 — verified against a
+    // real `npx @react-native-community/cli init --version 0.76.9` project's generated
+    // android/app/build.gradle, not just extrapolation. AGP/kotlin/gradle/compileSdk/targetSdk/
+    // ndk/buildToolsVersion were all independently confirmed correct against that same real
+    // project during a detector audit (see architecture.md's dependency-graph/detector notes).
     version: '0.76',
     node: '18.18.0',
     android: {
@@ -123,7 +128,7 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
       gradle: '8.10.2',
       compileSdk: '35',
       targetSdk: '34',
-      minSdk: '23',
+      minSdk: '24',
       ndk: '26.1.10909125',
       buildToolsVersion: '35.0.0',
     },

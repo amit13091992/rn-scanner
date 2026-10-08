@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { readVersionCatalogVersion } from './versionCatalog.js';
+import { readVersionCatalogVersion, readReactNativeGradlePluginCatalogVersion } from './versionCatalog.js';
 
 export interface KotlinDetectionResult {
   version?: string;
@@ -61,6 +61,14 @@ export function detectKotlinVersion(cwd: string): KotlinDetectionResult {
   const catalogResult = readVersionCatalogVersion(cwd, ['kotlin', 'kotlin-android', 'kotlinAndroid']);
   if (catalogResult.version) {
     return catalogResult;
+  }
+
+  // Last resort, same rationale as detectAgpVersion's equivalent fallback: the bundled
+  // @react-native/gradle-plugin catalog also pins a kotlin version, used when the project
+  // itself doesn't declare one anywhere.
+  const pluginCatalogResult = readReactNativeGradlePluginCatalogVersion(cwd, ['kotlin']);
+  if (pluginCatalogResult.version) {
+    return pluginCatalogResult;
   }
 
   return {};

@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { readVersionCatalogVersion } from './versionCatalog.js';
+import { readVersionCatalogVersion, readReactNativeGradlePluginCatalogVersion } from './versionCatalog.js';
 
 export interface AgpDetectionResult {
   version?: string;
@@ -25,6 +25,11 @@ function readIfExists(path: string): string | undefined {
  *  - android/gradle/libs.versions.toml `[versions] agp = "X.Y.Z"` (Gradle version catalog —
  *    the pattern newest RN templates use, resolved indirectly via `alias(libs.plugins.agp)`
  *    rather than a literal version string anywhere in a build.gradle file)
+ *  - node_modules/@react-native/gradle-plugin/gradle/libs.versions.toml `[versions] agp = "X.Y.Z"`
+ *    — confirmed against a real `react-native init` 0.76.9 project: as of RN 0.76+, AGP isn't
+ *    declared anywhere in the user's own project files at all (the classpath line itself has
+ *    no version); this bundled catalog is the actual version Gradle resolves, via
+ *    `android/settings.gradle`'s `includeBuild("../node_modules/@react-native/gradle-plugin")`.
  */
 export function detectAgpVersion(cwd: string): AgpDetectionResult {
   const candidates = [
@@ -56,6 +61,14 @@ export function detectAgpVersion(cwd: string): AgpDetectionResult {
   const catalogResult = readVersionCatalogVersion(cwd, ['agp', 'android-gradle-plugin', 'androidGradlePlugin']);
   if (catalogResult.version) {
     return catalogResult;
+  }
+
+  // Last resort, confirmed against a real `react-native init` 0.76.9 project: as of RN 0.76+,
+  // AGP isn't declared in any project file at all — the version Gradle actually resolves comes
+  // from @react-native/gradle-plugin's own bundled catalog (see readReactNativeGradlePluginCatalogVersion).
+  const pluginCatalogResult = readReactNativeGradlePluginCatalogVersion(cwd, ['agp']);
+  if (pluginCatalogResult.version) {
+    return pluginCatalogResult;
   }
 
   return {};

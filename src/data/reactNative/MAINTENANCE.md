@@ -30,7 +30,7 @@ or the version history at https://react-native-community.github.io/upgrade-helpe
 
 | Version | Status | Source |
 |---|---|---|
-| 0.70 - 0.79 | Confirmed | Upgrade Helper template diffs at authoring time |
+| 0.70 - 0.79 | Confirmed | Upgrade Helper template diffs at authoring time; 0.76's `minSdk` corrected 23→24 on 2026-10-08 against a real `react-native init` 0.76.9 project (the rest of its Android fields, plus AGP/Kotlin/Gradle/compileSdk/targetSdk/NDK/buildToolsVersion, were independently re-confirmed correct in the same pass) |
 | 0.80 - 0.83 | Estimated | Not yet shipped at authoring time; extrapolated from the 0.76-0.79 trend |
 | 0.84 | Estimated | Extrapolated; Node 22.13 baseline carried forward from 0.84 assumption below |
 | 0.85 - 0.86 | Estimated | Extrapolated from 0.83/0.84/0.87 trend |

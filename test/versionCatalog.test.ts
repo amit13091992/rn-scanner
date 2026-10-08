@@ -124,3 +124,66 @@ test('detectAgpVersion - no build.gradle, no settings.gradle, no catalog reports
     cleanup(dir);
   }
 });
+
+test('detectAgpVersion - falls back to @react-native/gradle-plugin\'s bundled catalog when the project declares no version anywhere (confirmed against a real RN 0.76.9 init)', () => {
+  const dir = makeTempDir();
+  try {
+    mkdirSync(join(dir, 'android'), { recursive: true });
+    writeFileSync(
+      join(dir, 'android', 'build.gradle'),
+      `
+buildscript {
+    ext { kotlinVersion = "1.9.25" }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+    }
+}
+`,
+    );
+    mkdirSync(join(dir, 'node_modules', '@react-native', 'gradle-plugin', 'gradle'), { recursive: true });
+    writeFileSync(
+      join(dir, 'node_modules', '@react-native', 'gradle-plugin', 'gradle', 'libs.versions.toml'),
+      `[versions]\nagp = "8.6.0"\nkotlin = "1.9.25"\n`,
+    );
+
+    const result = detectAgpVersion(dir);
+    assert.equal(result.version, '8.6.0');
+    assert.match(result.source ?? '', /node_modules.*gradle-plugin.*libs\.versions\.toml$/);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('detectAgpVersion - a project-level catalog still takes precedence over the bundled gradle-plugin one', () => {
+  const dir = makeTempDir();
+  try {
+    mkdirSync(join(dir, 'android', 'gradle'), { recursive: true });
+    writeFileSync(join(dir, 'android', 'gradle', 'libs.versions.toml'), `[versions]\nagp = "8.7.0"\n`);
+    mkdirSync(join(dir, 'node_modules', '@react-native', 'gradle-plugin', 'gradle'), { recursive: true });
+    writeFileSync(
+      join(dir, 'node_modules', '@react-native', 'gradle-plugin', 'gradle', 'libs.versions.toml'),
+      `[versions]\nagp = "8.6.0"\n`,
+    );
+
+    const result = detectAgpVersion(dir);
+    assert.equal(result.version, '8.7.0');
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('detectKotlinVersion - falls back to @react-native/gradle-plugin\'s bundled catalog when the project declares no version anywhere', () => {
+  const dir = makeTempDir();
+  try {
+    mkdirSync(join(dir, 'node_modules', '@react-native', 'gradle-plugin', 'gradle'), { recursive: true });
+    writeFileSync(
+      join(dir, 'node_modules', '@react-native', 'gradle-plugin', 'gradle', 'libs.versions.toml'),
+      `[versions]\nagp = "8.6.0"\nkotlin = "1.9.25"\n`,
+    );
+
+    const result = detectKotlinVersion(dir);
+    assert.equal(result.version, '1.9.25');
+  } finally {
+    cleanup(dir);
+  }
+});
