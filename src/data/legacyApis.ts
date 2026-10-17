@@ -132,4 +132,31 @@ export const LEGACY_APIS: LegacyApiEntry[] = [
     reason: 'PropTypes was never a real react-native export — this only worked by accident via a transitive re-export that no longer exists',
     replacement: "the 'prop-types' package directly, or TypeScript types",
   },
+  {
+    symbol: 'InteractionManager',
+    fromPackage: 'react-native',
+    reason: 'InteractionManager was removed from react-native in 0.87',
+    replacement: 'requestIdleCallback',
+    removedInVersion: '0.87.0',
+  },
+  {
+    symbol: 'Touchable',
+    fromPackage: 'react-native',
+    reason: 'The undocumented Touchable root export was removed in 0.87',
+    replacement: 'ViewProps (as a type), or Pressable',
+    removedInVersion: '0.87.0',
+  },
+  {
+    symbol: 'InputAccessoryView',
+    fromPackage: 'react-native',
+    reason: 'InputAccessoryView (iOS-only) is deprecated in 0.88',
+    replacement: 'react-native-keyboard-controller (KeyboardStickyView)',
+    removedInVersion: '0.88.0',
+  },
+  {
+    symbol: 'ImageBackground',
+    fromPackage: 'react-native',
+    reason: 'ImageBackground is deprecated as of 0.87',
+    replacement: 'View with an absolutely positioned Image',
+  },
 ];

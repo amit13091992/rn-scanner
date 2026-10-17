@@ -1,6 +1,8 @@
 import { coerce, gt as semverGt, gte as semverGte, lt as semverLt } from 'semver';
 import type { RawPackageVulnerabilityResult, RawSecurityScanResult, VulnerabilityInfo, VulnerabilitySeverity } from '../types/vulnerability.js';
 
+import { fetchWithTimeout, isOffline, networkTimeoutMs } from '../utils/network.js';
+
 const OSV_BATCH_URL = 'https://api.osv.dev/v1/querybatch';
 const OSV_VULN_URL = 'https://api.osv.dev/v1/vulns/';
 const TIMEOUT_MS = 8000;
@@ -38,16 +40,12 @@ interface OsvVulnRecord {
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const response = await fetchWithTimeout(url, init, networkTimeoutMs(TIMEOUT_MS));
+  if (!response) return null;
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
-    if (!response.ok) return null;
     return (await response.json()) as T;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -163,7 +161,11 @@ export async function queryVulnerabilities(
   });
 
   if (!batchResponse) {
-    return { scanned: false, error: 'Could not reach OSV.dev (network unavailable or request failed)', results: [] };
+    return {
+      scanned: false,
+      error: isOffline() ? 'Skipped: offline mode (--offline)' : 'Could not reach OSV.dev (network unavailable, timed out or request failed) — raise --timeout <ms> or retry',
+      results: [],
+    };
   }
 
   const batchResults = batchResponse.results ?? [];

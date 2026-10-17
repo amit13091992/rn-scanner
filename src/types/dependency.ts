@@ -22,7 +22,12 @@ export interface ProjectMetadata {
 export interface CompatibilityRule {
   package: string;
   version: string;
+  /** Hard requirement: a version outside this range is reported as an error. */
   reactNative?: string;
+  /** Upper end of the range the package documents as tested. A version above it (but still
+   *  satisfying `reactNative`) is a warning, not an error — absence of testing is not evidence
+   *  of breakage. */
+  reactNativeTested?: string;
   react?: string;
   node?: string;
 }

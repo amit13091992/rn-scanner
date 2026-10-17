@@ -5,6 +5,10 @@ import { loadConfig } from '../utils/config.js';
 import { listWorkspaceTargets } from '../utils/workspaceRun.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
+import { printGroupedVulnerabilities, meetsFailThreshold, parseFailOn, type SecurityPrintOptions } from '../utils/securityFormat.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { VulnerabilitySeverity } from '../types/vulnerability.js';
 import type { DependencyGraph } from '../types/dependencyGraph.js';
 
 function graphManagerLabel(graph: DependencyGraph | null): { manager: string; hierarchyComplete: boolean } | null {
@@ -19,6 +23,21 @@ export interface SecurityOptions {
    *  `cwd` itself, and aggregate the results into one report. A no-op (same as omitting it) when
    *  `cwd` isn't inside a workspace at all. */
   allWorkspaces?: boolean;
+  /** One line per advisory instead of one grouped block per package. */
+  verbose?: boolean;
+  /** Counts plus one line per affected package — no per-advisory detail. */
+  summary?: boolean;
+  /** Lowest severity that makes the command exit 1 (default `high`; `none` never fails). */
+  failOn?: string;
+}
+
+function appNameOf(cwd: string): string {
+  try {
+    const name = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf-8')).name;
+    return typeof name === 'string' && name ? name : 'your-app';
+  } catch {
+    return 'your-app';
+  }
 }
 
 const SEVERITY_ICON: Record<string, string> = {
@@ -43,7 +62,11 @@ async function scanOneProject(
   return { result, graph };
 }
 
-function printSecurityResult(result: SecurityAnalysisResult, graphInfo: { manager: string; hierarchyComplete: boolean } | null): void {
+function printSecurityResult(
+  result: SecurityAnalysisResult,
+  graphInfo: { manager: string; hierarchyComplete: boolean } | null,
+  display: SecurityPrintOptions
+): void {
   if (graphInfo && !graphInfo.hierarchyComplete) {
     printWarning(
       `Dependency hierarchy for "${graphInfo.manager}" is direct-only (not fully resolved); transitive coverage may be incomplete.`
@@ -60,29 +83,7 @@ function printSecurityResult(result: SecurityAnalysisResult, graphInfo: { manage
   }
 
   printSection('Vulnerabilities');
-  result.results
-    .slice()
-    .sort((a, b) => {
-      const aMax = Math.min(...a.vulnerabilities.map((v) => SEVERITY_ORDER.indexOf(v.severity)));
-      const bMax = Math.min(...b.vulnerabilities.map((v) => SEVERITY_ORDER.indexOf(v.severity)));
-      return aMax - bMax;
-    })
-    .forEach((pkgResult) => {
-      pkgResult.vulnerabilities.forEach((vuln) => {
-        console.log(`\n${SEVERITY_ICON[vuln.severity] ?? vuln.severity}  ${pkgResult.package}@${pkgResult.version}${pkgResult.direct ? '' : ' (transitive)'}`);
-        console.log(`  ├─ ${vuln.id}: ${vuln.summary}`);
-        if (vuln.fixedVersion) {
-          console.log(`  ├─ Fixed in: ${vuln.fixedVersion}`);
-        }
-        pkgResult.paths.forEach((path, idx) => {
-          const connector = idx === pkgResult.paths.length - 1 && vuln.references.length === 0 ? '└─' : '├─';
-          console.log(`  ${connector} Path: your-app → ${path.join(' → ')}`);
-        });
-        if (vuln.references.length > 0) {
-          console.log(`  └─ ${vuln.references[0]}`);
-        }
-      });
-    });
+  printGroupedVulnerabilities(result.results, display);
 
   printSection('Summary');
   (['critical', 'high', 'moderate', 'low', 'unknown'] as const).forEach((severity) => {
@@ -95,11 +96,11 @@ function printSecurityResult(result: SecurityAnalysisResult, graphInfo: { manage
   printInfo(`${result.results.length} package(s) affected (${affectedDirect} direct, ${affectedTransitive} transitive)`);
 }
 
-function isCriticalOrHigh(result: SecurityAnalysisResult): boolean {
-  return result.summary.critical + result.summary.high > 0;
+function exceedsThreshold(result: SecurityAnalysisResult, threshold: VulnerabilitySeverity | 'none'): boolean {
+  return meetsFailThreshold(result.summary, threshold);
 }
 
-async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMode: boolean): Promise<boolean> {
+async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMode: boolean, threshold: VulnerabilitySeverity | 'none'): Promise<boolean> {
   const targets = listWorkspaceTargets(cwd);
   if (targets.length === 0) {
     // Not actually a workspace — --all-workspaces is a no-op, fall back to scanning cwd alone.
@@ -107,9 +108,9 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
     if (jsonMode) {
       emitStructuredOutput({ ...result, hierarchyComplete: graph?.hierarchyComplete ?? false }, 'Security Scan', options);
     } else {
-      printSecurityResult(result, graphManagerLabel(graph));
+      printSecurityResult(result, graphManagerLabel(graph), { appName: appNameOf(cwd), verbose: !!options.verbose, summaryOnly: !!options.summary });
     }
-    return isCriticalOrHigh(result);
+    return exceedsThreshold(result, threshold);
   }
 
   const perPackage = await Promise.all(
@@ -132,12 +133,13 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
       printSection(`Workspace package: ${pkg.package}`);
       printSecurityResult(
         { scanned: pkg.scanned, error: pkg.error, results: pkg.results, summary: pkg.summary },
-        pkg.manager ? { manager: pkg.manager, hierarchyComplete: pkg.hierarchyComplete } : null
+        pkg.manager ? { manager: pkg.manager, hierarchyComplete: pkg.hierarchyComplete } : null,
+        { appName: pkg.package, verbose: !!options.verbose, summaryOnly: !!options.summary }
       );
     });
   }
 
-  return perPackage.some((pkg) => isCriticalOrHigh(pkg));
+  return perPackage.some((pkg) => exceedsThreshold(pkg, threshold));
 }
 
 /**
@@ -153,6 +155,16 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
   // function's own `catch` (a real concern in tests, where `process.exit` is stubbed to throw)
   // and misreported as a fatal error alongside the already-printed successful result.
   let criticalOrHighFound = false;
+  let threshold: VulnerabilitySeverity | 'none';
+  try {
+    threshold = parseFailOn(options.failOn);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid --fail-on value';
+    if (jsonMode) emitStructuredOutput({ error: message }, 'Security Scan', options);
+    else printError(message);
+    process.exit(1);
+    return;
+  }
 
   try {
     if (!jsonMode) {
@@ -160,7 +172,7 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
     }
 
     if (options.allWorkspaces) {
-      criticalOrHighFound = await runAcrossWorkspaces(cwd, options, jsonMode);
+      criticalOrHighFound = await runAcrossWorkspaces(cwd, options, jsonMode, threshold);
     } else {
       const { result, graph } = await scanOneProject(cwd);
       if (jsonMode) {
@@ -170,9 +182,9 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
           options
         );
       } else {
-        printSecurityResult(result, graphManagerLabel(graph));
+        printSecurityResult(result, graphManagerLabel(graph), { appName: appNameOf(cwd), verbose: !!options.verbose, summaryOnly: !!options.summary });
       }
-      criticalOrHighFound = isCriticalOrHigh(result);
+      criticalOrHighFound = exceedsThreshold(result, threshold);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

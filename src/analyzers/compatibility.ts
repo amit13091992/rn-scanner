@@ -72,6 +72,11 @@ export function analyzeCompatibility(
           messages.push(
             `✕ Incompatible with React Native ${cleanRNVersion} (requires ${rule.reactNative})`
           );
+        } else if (rule.reactNativeTested && !satisfies(cleanRNVersion, rule.reactNativeTested)) {
+          status = status === 'error' ? 'error' : 'warning';
+          messages.push(
+            `⚠ React Native ${cleanRNVersion} is newer than the range this package documents as tested (${rule.reactNativeTested}) — not known to be broken; verify on your own build`
+          );
         } else {
           messages.push(
             `✓ Compatible with React Native ${cleanRNVersion}`

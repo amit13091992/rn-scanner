@@ -48,7 +48,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
     }
 
     if (!existsSync(baselinePath)) {
-      const error = `No baseline found at ${BASELINE_FILENAME} — run \`rn-dep-scanner baseline --create\` first`;
+      const error = `No baseline found at ${BASELINE_FILENAME} — run \`npx rn-dep-scanner baseline --create\` first`;
       if (jsonMode) {
         emitStructuredOutput({ error }, 'Baseline', options);
       } else {

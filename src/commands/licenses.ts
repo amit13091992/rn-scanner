@@ -13,6 +13,8 @@ export interface LicensesOptions {
   cwd?: string;
   /** Run the license report against every workspace package in the monorepo, not just `cwd`. */
   allWorkspaces?: boolean;
+  /** List every package name under each license instead of counts only. */
+  verbose?: boolean;
 }
 
 async function analyzeOneProject(cwd: string): Promise<{ result: LicenseAnalysisResult; denylist: string[] }> {
@@ -25,14 +27,37 @@ async function analyzeOneProject(cwd: string): Promise<{ result: LicenseAnalysis
   return { result, denylist };
 }
 
-function printLicenseResult(result: LicenseAnalysisResult, denylist: string[]): void {
-  printSection('By License');
-  Object.entries(result.byLicense)
-    .sort(([, a], [, b]) => b.length - a.length)
-    .forEach(([license, packages]) => {
-      console.log(`\n${license} (${packages.length})`);
+// Licenses that carry reciprocal / source-disclosure obligations worth a human look.
+const COPYLEFT_PATTERN = /(^|[^L])GPL|AGPL|LGPL|\bMPL|\bEPL|CDDL|EUPL|SSPL|CC-BY-(NC-)?SA|OSL/i;
+const UNKNOWN_PREVIEW = 15;
+
+// "(MIT OR GPL-2.0)" lets the consumer pick the permissive side, so only flag an expression
+// when every alternative is copyleft.
+function isCopyleft(license: string): boolean {
+  const alternatives = license.replace(/[()]/g, '').split(/\s+OR\s+/i);
+  return alternatives.every((alt) => COPYLEFT_PATTERN.test(alt));
+}
+
+function printLicenseResult(result: LicenseAnalysisResult, denylist: string[], verbose: boolean): void {
+  const rows = Object.entries(result.byLicense).sort(([, a], [, b]) => b.length - a.length);
+
+  printSection('License Summary');
+  rows.forEach(([license, packages]) => {
+    const copyleft = isCopyleft(license) ? '  ⚠ copyleft — review obligations' : '';
+    console.log(`  ${String(packages.length).padStart(5)}  ${license}${copyleft}`);
+  });
+  if (result.unknown.length > 0 && !('UNKNOWN' in result.byLicense)) {
+    console.log(`  ${String(result.unknown.length).padStart(5)}  UNKNOWN (no readable license)  ⚠`);
+  }
+
+  const copyleftRows = rows.filter(([license]) => isCopyleft(license));
+  if (copyleftRows.length > 0) {
+    printSection('Copyleft Licenses');
+    copyleftRows.forEach(([license, packages]) => {
+      printWarning(`${license} (${packages.length})`);
       console.log(`  ${packages.join(', ')}`);
     });
+  }
 
   if (result.denied.length > 0) {
     printSection('Denied Licenses');
@@ -42,7 +67,21 @@ function printLicenseResult(result: LicenseAnalysisResult, denylist: string[]): 
   }
 
   if (result.unknown.length > 0) {
-    printInfo(`${result.unknown.length} package(s) had no readable license: ${result.unknown.map((u) => u.name).join(', ')}`);
+    printSection('Unknown Licenses');
+    const names = result.unknown.map((u) => u.name);
+    const shown = verbose ? names : names.slice(0, UNKNOWN_PREVIEW);
+    console.log(`  ${shown.join(', ')}${shown.length < names.length ? `, … +${names.length - shown.length} more` : ''}`);
+    printInfo('Often platform-specific binary packages that ship no license field — check the ones you ship.');
+  }
+
+  if (verbose) {
+    printSection('All Packages By License');
+    rows.forEach(([license, packages]) => {
+      console.log(`\n${license} (${packages.length})`);
+      console.log(`  ${packages.join(', ')}`);
+    });
+  } else {
+    printInfo('Re-run with --verbose to list every package under each license.');
   }
 }
 
@@ -65,7 +104,7 @@ export async function licensesCommand(options: LicensesOptions = {}): Promise<vo
           emitStructuredOutput(result, 'License Report', options);
         } else {
           printHeader('Licenses');
-          printLicenseResult(result, denylist);
+          printLicenseResult(result, denylist, !!options.verbose);
         }
       } else {
         const perPackage = await Promise.all(
@@ -82,7 +121,7 @@ export async function licensesCommand(options: LicensesOptions = {}): Promise<vo
           printHeader('Licenses (all workspaces)');
           perPackage.forEach((pkg) => {
             printSection(`Workspace package: ${pkg.package}`);
-            printLicenseResult(pkg, pkg.denylist);
+            printLicenseResult(pkg, pkg.denylist, !!options.verbose);
           });
         }
       }
@@ -94,7 +133,7 @@ export async function licensesCommand(options: LicensesOptions = {}): Promise<vo
         emitStructuredOutput(result, 'License Report', options);
       } else {
         printHeader('Licenses');
-        printLicenseResult(result, denylist);
+        printLicenseResult(result, denylist, !!options.verbose);
       }
     }
   } catch (error) {

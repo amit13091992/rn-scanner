@@ -14,20 +14,20 @@ import type { ExpoSdkRequirements } from '../../types/expo.js';
  *  - SDK 55-57: confirmed — explicitly noted in this project's own roadmap research
  *    (SDK 55+ requires the New Architecture; SDK 56 pins React Native 0.85, corrected
  *    2026-10-08 from an earlier 0.84 estimate per public coverage of the SDK 56 release;
- *    SDK 57 pins React Native 0.86).
- *  - SDK 54: estimated, interpolated from the surrounding confirmed entries' cadence
- *    (roughly one RN minor per SDK release) — replace with a confirmed value once verified
- *    against that SDK's actual release notes.
+ *    SDK 57 pins React Native 0.86; SDK 58 (2026-10-15) pins React Native 0.88).
+ *  - SDK 54: confirmed 2026-10-17 — `npx expo install --fix` on an SDK 54 project resolves
+ *    react-native 0.81.x, react 19.1 and react-native-reanimated 4.x, and expo-doctor passes.
  */
 export const EXPO_SDK_REGISTRY: ExpoSdkRequirements[] = [
   { sdk: 50, reactNative: '0.73', newArchRequired: false, confidence: 'confirmed' },
   { sdk: 51, reactNative: '0.74', newArchRequired: false, confidence: 'confirmed' },
   { sdk: 52, reactNative: '0.76', newArchRequired: false, confidence: 'confirmed' },
   { sdk: 53, reactNative: '0.79', newArchRequired: false, confidence: 'confirmed' },
-  { sdk: 54, reactNative: '0.81', newArchRequired: true, confidence: 'estimated' },
+  { sdk: 54, reactNative: '0.81', newArchRequired: true, confidence: 'confirmed' },
   { sdk: 55, reactNative: '0.83', newArchRequired: true, confidence: 'confirmed' },
   { sdk: 56, reactNative: '0.85', newArchRequired: true, confidence: 'confirmed' },
   { sdk: 57, reactNative: '0.86', newArchRequired: true, confidence: 'confirmed' },
+  { sdk: 58, reactNative: '0.88', newArchRequired: true, confidence: 'confirmed' },
 ];
 
 export function getExpoSdkRequirements(sdk: number): ExpoSdkRequirements | undefined {

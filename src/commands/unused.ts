@@ -34,10 +34,18 @@ export async function unusedCommand(options: UnusedOptions = {}): Promise<void> 
       printSuccess('No unused dependencies detected');
     } else {
       printSection('No import found');
-      printWarning('This is a heuristic (regex-based require/import scan) — verify before removing anything, especially packages used only from a config file.');
+      printWarning('This is a heuristic (regex-based require/import scan) — verify each one by hand before removing anything.');
+      if (result.unused.some((u) => u.name.startsWith('expo-') || u.name.startsWith('@expo/'))) {
+        printInfo('Expo packages can be used without an import (config plugins, app.config.js, native autolinking, or another Expo package). Only app.json plugins, package.json and common config files were checked.');
+      }
       result.unused.forEach((dep) => {
         console.log(`  • ${dep.name} (${dep.type})`);
       });
+    }
+
+    if (result.implicitlyUsed.length > 0) {
+      printInfo(`${result.implicitlyUsed.length} package(s) have no import but are used implicitly (not flagged):`);
+      result.implicitlyUsed.forEach((u) => console.log(`  • ${u.name} — ${u.reason}`));
     }
 
     if (result.excludedAsTooling.length > 0) {

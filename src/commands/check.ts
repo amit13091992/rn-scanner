@@ -32,6 +32,7 @@ import {
   isReactNativeCompatible,
 } from '../utils/versionDetection.js';
 import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
+import { printGroupedVulnerabilities } from '../utils/securityFormat.js';
 import { computeHealthScore } from '../utils/healthScore.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
@@ -58,6 +59,8 @@ export interface CheckOptions {
   /** Security scanning is on by default; pass false (--no-security) to skip the OSV.dev network call. */
   security?: boolean;
   profile?: boolean;
+  /** List every security advisory instead of one grouped block per package. */
+  verbose?: boolean;
   /** Run the full check against every workspace package in the monorepo, not just `cwd`, and
    *  aggregate the results into one report. A no-op (same as omitting it) when `cwd` isn't
    *  inside a workspace. */
@@ -356,36 +359,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       } else if (securityResult.results.length === 0) {
         printSuccess('No known vulnerabilities found (via OSV.dev, including transitive dependencies)');
       } else {
-        const severityIcon: Record<string, string> = {
-          critical: '🔴 CRITICAL',
-          high: '🟠 HIGH',
-          moderate: '🟡 MODERATE',
-          low: 'ℹ️  LOW',
-          unknown: 'ℹ️  UNKNOWN',
-        };
-        const severityOrder = ['critical', 'high', 'moderate', 'low', 'unknown'];
-        securityResult.results
-          .slice()
-          .sort((a, b) => {
-            const aMax = Math.min(...a.vulnerabilities.map((v) => severityOrder.indexOf(v.severity)));
-            const bMax = Math.min(...b.vulnerabilities.map((v) => severityOrder.indexOf(v.severity)));
-            return aMax - bMax;
-          })
-          .forEach((pkgResult) => {
-            pkgResult.vulnerabilities.forEach((vuln) => {
-              console.log(`\n${severityIcon[vuln.severity] ?? vuln.severity}  ${pkgResult.package}@${pkgResult.version}${pkgResult.direct ? '' : ' (transitive)'}`);
-              console.log(`  ├─ ${vuln.id}: ${vuln.summary}`);
-              if (vuln.fixedVersion) {
-                console.log(`  ├─ Fixed in: ${vuln.fixedVersion}`);
-              }
-              if (pkgResult.paths.length > 0) {
-                console.log(`  ├─ Path: your-app → ${pkgResult.paths[0].join(' → ')}`);
-              }
-              if (vuln.references.length > 0) {
-                console.log(`  └─ ${vuln.references[0]}`);
-              }
-            });
-          });
+        printGroupedVulnerabilities(securityResult.results, { appName: typeof (packageJson as { name?: unknown }).name === 'string' ? (packageJson as { name: string }).name : 'your-app', verbose: !!options.verbose, summaryOnly: false });
       }
 
       printSection('AI SDK Exposure');
@@ -460,8 +434,13 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       }
 
 
-      if (dependencyCompleteness.missing.length > 0 || dependencyCompleteness.notChecked.length > 0) {
-        printSection('Sub-dependency Completeness');
+      printSection('Sub-dependency Completeness');
+      if (dependencyCompleteness.missing.length === 0 && dependencyCompleteness.notChecked.length === 0) {
+        printSuccess('Every installed package has all of its dependencies and peers resolved');
+      } else {
+        if (requiredMissingDeps.length === 0 && dependencyCompleteness.notChecked.length === 0) {
+          printSuccess('No missing required sub-dependencies');
+        }
         if (requiredMissingDeps.length > 0) {
           requiredMissingDeps.forEach((m) => {
             const kindLabel = m.kind === 'peerDependency' ? 'peer dependency' : 'dependency';
@@ -508,8 +487,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       }
       if (detectedBreakingChanges.length > 0) {
         const staleCount = detectedBreakingChanges.length - actionableBreakingChanges.length;
-        const staleNote = staleCount > 0 ? ` (${staleCount} historical, for awareness only)` : '';
-        console.log(`🔨 Breaking changes: ${detectedBreakingChanges.length}${staleNote}`);
+        console.log(`🔨 Breaking changes: ${detectedBreakingChanges.length} (${actionableBreakingChanges.length} to review, ${staleCount} already in effect)`);
       }
       if (deprecatedPkgs.length > 0) {
         console.log(`🗑️  Deprecated packages: ${deprecatedPkgs.length}`);
@@ -540,7 +518,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           console.log(`  • ${peerConflicts.length} peer dependency conflict(s)`);
         }
         if (actionableBreakingChanges.length > 0) {
-          console.log(`  • ${actionableBreakingChanges.length} breaking change(s) require code updates`);
+          console.log(`  • ${actionableBreakingChanges.length} of ${detectedBreakingChanges.length} breaking change(s) may need code updates (the other ${detectedBreakingChanges.length - actionableBreakingChanges.length} are already part of your installed versions)`);
         }
         if (newArchUnsupported > 0) {
           console.log(`  • ${newArchUnsupported} package(s) do not support the New Architecture`);
@@ -589,10 +567,11 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           notChecked,
           warnings,
           errors,
-          healthScore: healthScoreResult.score,
+          healthScore: healthScoreResult.insufficientData ? null : healthScoreResult.score,
           healthScoreCoverage: {
             analyzed: healthScoreResult.analyzed,
             lowCoverage: healthScoreResult.lowCoverage,
+            insufficientData: healthScoreResult.insufficientData,
           },
           breakingChanges: detectedBreakingChanges.length,
           actionableBreakingChanges: actionableBreakingChanges.length,

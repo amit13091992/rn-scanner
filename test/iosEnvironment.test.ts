@@ -187,3 +187,19 @@ test('analyzeIosEnvironment - full ios project produces detected values without 
     cleanup(dir);
   }
 });
+
+test('analyzeIosEnvironment - RN 0.88 flags missing UIScene lifecycle, passes once migrated', () => {
+  const dir = makeTempDir();
+  try {
+    mkdirSync(join(dir, 'ios', 'App'), { recursive: true });
+    writeFileSync(join(dir, 'ios', 'App', 'Info.plist'), '<plist><dict/></plist>');
+    const before = analyzeIosEnvironment(dir, '0.88.0').find((r) => r.name === 'iOS UIScene lifecycle');
+    assert.equal(before?.status, 'warning');
+    writeFileSync(join(dir, 'ios', 'App', 'Info.plist'), '<plist><dict><key>UIApplicationSceneManifest</key></dict></plist>');
+    const after = analyzeIosEnvironment(dir, '0.88.0').find((r) => r.name === 'iOS UIScene lifecycle');
+    assert.equal(after?.status, 'ok');
+    assert.equal(analyzeIosEnvironment(dir, '0.87.0').some((r) => r.name === 'iOS UIScene lifecycle'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

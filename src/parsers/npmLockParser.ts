@@ -54,12 +54,11 @@ export class NPMLockParser implements ILockfileParser {
     Object.entries(depsObj).forEach(([name, spec]) => {
       if (typeof spec === 'object' && spec !== null) {
         const version = spec.version || '';
-        const resolved = spec.resolved || '';
 
         deps.set(name, {
           name,
           requestedVersion: version,
-          resolvedVersion: resolved || version,
+          resolvedVersion: version,
           integrity: spec.integrity,
         });
       }
@@ -75,15 +74,15 @@ export class NPMLockParser implements ILockfileParser {
       const name = this.extractPackageName(path);
       if (!name) return;
 
-      const existing = deps.get(name);
-      if (existing && existing.requestedVersion === pkg.version) {
-        return;
-      }
+      // A hoisted top-level entry is the version the project itself resolves; a nested copy
+      // (a conflicting transitive pin) must never overwrite it.
+      const isTopLevel = path === `node_modules/${name}`;
+      if (deps.has(name) && !isTopLevel) return;
 
       deps.set(name, {
         name,
         requestedVersion: pkg.version,
-        resolvedVersion: pkg.resolved || pkg.version,
+        resolvedVersion: pkg.version,
         integrity: pkg.integrity,
       });
     });

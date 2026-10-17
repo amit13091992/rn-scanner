@@ -58,8 +58,14 @@ export function compareVersions(v1: string, v2: string): number {
 
 export function versionInRange(version: string, rangeString: string): boolean {
   try {
-    const cleanVersion = normalizeVersion(version);
     const cleanRange = normalizeRange(rangeString);
+    const exact = valid(version.trim().replace(/^v/, ''));
+    // coerce() drops a prerelease tag, so "8.0.0-3" would otherwise never satisfy "8.0.0-3".
+    // A prerelease is only compared as one when the range itself names a prerelease.
+    if (exact && exact.includes('-') && /\d-\w/.test(cleanRange)) {
+      return satisfies(exact, cleanRange, { includePrerelease: true });
+    }
+    const cleanVersion = normalizeVersion(version);
 
     if (!cleanVersion || !cleanRange) {
       return false;

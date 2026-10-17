@@ -1,5 +1,6 @@
+import { fetchWithTimeout } from './network.js';
+
 const REGISTRY_BASE = 'https://registry.npmjs.org';
-const FETCH_TIMEOUT_MS = 5000;
 const CONCURRENCY = 10;
 
 /**
@@ -9,22 +10,13 @@ const CONCURRENCY = 10;
  * `fetchLatestVersions`' batch/dedup machinery built for many package names at once.
  */
 export async function fetchLatestVersion(name: string): Promise<string | undefined> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+  const response = await fetchWithTimeout(`${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}/latest`);
+  if (!response) return undefined;
   try {
-    const response = await fetch(
-      `${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}/latest`,
-      { signal: controller.signal }
-    );
-    if (!response.ok) return undefined;
-
     const data = (await response.json()) as { version?: string };
     return data.version;
   } catch {
     return undefined;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -63,21 +55,12 @@ export async function fetchLatestVersions(
  * the full packument is much larger than `/latest` and shouldn't be fetched for every dependency.
  */
 export async function fetchAllVersions(name: string): Promise<string[] | undefined> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+  const response = await fetchWithTimeout(`${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}`);
+  if (!response) return undefined;
   try {
-    const response = await fetch(
-      `${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}`,
-      { signal: controller.signal }
-    );
-    if (!response.ok) return undefined;
-
     const data = (await response.json()) as { versions?: Record<string, unknown> };
     return data.versions ? Object.keys(data.versions) : undefined;
   } catch {
     return undefined;
-  } finally {
-    clearTimeout(timeout);
   }
 }

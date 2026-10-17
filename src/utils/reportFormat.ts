@@ -33,7 +33,7 @@ export function formatReportMarkdown(data: ReportData): string {
   if (data.reactVersion) lines.push(`React: ${data.reactVersion}`);
   lines.push('');
 
-  lines.push(`## Health Score: ${data.healthScore.score}/100`);
+  lines.push(data.healthScore.insufficientData ? '## Health Score: insufficient data' : `## Health Score: ${data.healthScore.score}/100`);
   if (data.healthScore.lowCoverage) {
     lines.push(`_Low coverage: only ${data.healthScore.analyzed} dependency/dependencies had compatibility data to analyze._`);
   }

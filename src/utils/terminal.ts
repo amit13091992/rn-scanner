@@ -60,12 +60,17 @@ export function printVersionComparison(
 }
 
 export function printHealthScore(breakdown: HealthScoreBreakdown): void {
-  const { score, analyzed, total, lowCoverage } = computeHealthScore(breakdown);
+  const { score, analyzed, total, lowCoverage, insufficientData } = computeHealthScore(breakdown);
 
   const scoreColor = score >= 80 ? chalk.green : score >= 60 ? chalk.yellow : chalk.red;
-  console.log(`\n${scoreColor.bold(`Health Score: ${score}/100`)} ${chalk.gray(`(based on ${analyzed} of ${total} dependencies with known compatibility rules)`)}`);
-  if (lowCoverage) {
-    console.log(chalk.gray('  ℹ Most dependencies have no compatibility rules yet — this score reflects only the few that were checked, not overall project health'));
+  if (insufficientData) {
+    console.log(`\n${chalk.gray.bold('Health Score: insufficient data')} ${chalk.gray(`(only ${analyzed} of ${total} dependencies have compatibility rules)`)}`);
+    console.log(chalk.gray(`  ℹ A score from ${analyzed} of ${total} packages would not reflect overall project health, so none is shown`));
+  } else {
+    console.log(`\n${scoreColor.bold(`Health Score: ${score}/100`)} ${chalk.gray(`(based on ${analyzed} of ${total} dependencies with known compatibility rules)`)}`);
+    if (lowCoverage) {
+      console.log(chalk.gray('  ℹ Most dependencies have no compatibility rules yet — this score reflects only the few that were checked, not overall project health'));
+    }
   }
 
   console.log(chalk.gray('  ├─ ✓ Compatible:    ') + chalk.green(breakdown.compatible));

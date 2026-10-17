@@ -2,7 +2,8 @@ import { getAllDependenciesWithResolution, readPackageJson } from '../utils/pack
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
 import { assessUpgradeReadiness, type UpgradeReadinessResult } from '../analyzers/upgradeReadiness.js';
 import { planUpgradePath } from '../analyzers/upgradePath.js';
-import { fetchLatestVersion } from '../utils/npmRegistry.js';
+import { coerce } from 'semver';
+import { fetchLatestVersion, fetchLatestVersions } from '../utils/npmRegistry.js';
 import {
   printHeader,
   printSection,
@@ -77,6 +78,10 @@ interface UpgradePathStep {
   verdict: UpgradeReadinessResult['verdict'];
 }
 
+function unverifiedToolchainsList(verified: { node: boolean; android: boolean; ios: boolean }): 'full' | 'javascript-only' {
+  return verified.android && verified.ios ? 'full' : 'javascript-only';
+}
+
 export async function upgradeCommand(toVersion: string | undefined, options: UpgradeOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
   const jsonMode = !!options.json || !!options.html;
@@ -116,8 +121,14 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
     const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
     const currentVersion = rnInfo.version;
 
-    const assessment = assessUpgradeReadiness(dependencies, cwd, resolvedToVersion);
-    const { risk, verdict, envVerdict, breakingChanges, relevantBreakingChangeCount, newArchitecture, nodeEnvironment, androidEnvironment, iosEnvironment, deprecatedPackages, duplicateDependencies } = assessment;
+    const assessment = assessUpgradeReadiness(dependencies, cwd, resolvedToVersion, currentVersion);
+    const { risk, riskReasons, minorsSpanned, dependencyCompatibility, environmentVerified, verdict, envVerdict, breakingChanges, relevantBreakingChangeCount, newArchitecture, nodeEnvironment, androidEnvironment, iosEnvironment, deprecatedPackages, duplicateDependencies } = assessment;
+    const latestVersions = await fetchLatestVersions(dependencies.map((d) => d.name));
+    const outdatedMajors = dependencies.filter((d) => {
+      const installed = coerce(d.resolvedVersion || d.requestedVersion);
+      const latest = latestVersions.get(d.name) ? coerce(latestVersions.get(d.name)!) : null;
+      return !!installed && !!latest && latest.major > installed.major;
+    }).length;
     const nodeIssues = nodeEnvironment.filter((r) => r.status === 'error' || r.status === 'warning');
     const androidIssues = androidEnvironment.filter((r) => r.status === 'error' || r.status === 'warning');
     const iosIssues = iosEnvironment.filter((r) => r.status === 'error' || r.status === 'warning');
@@ -130,7 +141,7 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
     if (hops.length > 1) {
       let hopFrom = currentVersion;
       upgradePath = hops.map((hopTo) => {
-        const hopAssessment = assessUpgradeReadiness(dependencies, cwd, hopTo);
+        const hopAssessment = assessUpgradeReadiness(dependencies, cwd, hopTo, hopFrom);
         const step: UpgradePathStep = { from: hopFrom, to: hopTo, risk: hopAssessment.risk, verdict: hopAssessment.verdict };
         hopFrom = hopTo;
         return step;
@@ -142,6 +153,12 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
         from: currentVersion,
         to: resolvedToVersion,
         risk,
+        riskReasons,
+        minorsSpanned,
+        dependencyCompatibility,
+        outdatedMajorVersions: outdatedMajors,
+        environmentVerified,
+        verdictScope: unverifiedToolchainsList(environmentVerified),
         verdict,
         envVerdict,
         breakingChanges,
@@ -162,13 +179,23 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
 
     const riskLabel = risk === 'high' ? '🔴 HIGH' : risk === 'medium' ? '🟠 MEDIUM' : '✓ LOW';
     const verdictLabel = verdict === 'BLOCKED' ? '🔴 BLOCKED' : verdict === 'WARN' ? '🟠 WARN' : '✓ READY';
-    console.log(`Verdict: ${verdictLabel}  (Risk: ${riskLabel})\n`);
+    console.log(`Verdict: ${verdictLabel}  (Risk: ${riskLabel})`);
+    riskReasons.forEach((reason) => console.log(`  • ${reason}`));
+    const unverifiedToolchains = (['android', 'ios'] as const).filter((k) => !environmentVerified[k]);
+    if (unverifiedToolchains.length > 0) {
+      console.log(`  ℹ Verdict is based on JavaScript-level data only — the ${unverifiedToolchains.map((k) => (k === 'ios' ? 'iOS' : 'Android')).join(' and ')} toolchain could not be checked (no native folder). Run \`npx expo prebuild\` and re-run for a native check.`);
+    }
+    if (outdatedMajors > 0) {
+      console.log(`  • ${outdatedMajors} dependenc${outdatedMajors === 1 ? 'y has' : 'ies have'} a newer major version available (run \`npx rn-dep-scanner outdated\`)`);
+    }
+    console.log('');
 
     printSection('Breaking Changes');
     if (breakingChanges.length === 0) {
       printSuccess('No known breaking changes for this upgrade');
     } else {
-      breakingChanges.forEach((issue) => {
+      const hiddenHistorical = breakingChanges.filter((i) => i.relevance === 'historical').length;
+      breakingChanges.filter((i) => i.relevance !== 'historical').forEach((issue) => {
         const icon = issue.severity === 'critical' ? '🔴 CRITICAL' : issue.severity === 'high' ? '🟠 HIGH' : '🟡 MEDIUM';
         const relevanceLabel = issue.relevance === 'historical'
           ? ' [historical — already true before this upgrade, does not affect verdict]'
@@ -178,6 +205,17 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
         console.log(`\n${icon}  ${issue.package}@${issue.version} (since ${issue.introducedInVersion})${relevanceLabel}`);
         issue.changes.forEach((msg) => console.log(`  • ${msg}`));
         if (issue.migrationGuide) console.log(`  Migration guide: ${issue.migrationGuide}`);
+      });
+      if (relevantBreakingChangeCount === 0) printSuccess('No breaking changes newly introduced by this upgrade');
+      if (hiddenHistorical > 0) printInfo(`${hiddenHistorical} breaking change(s) already in effect on your current version are hidden (see --json)`);
+    }
+
+    if (dependencyCompatibility.length > 0) {
+      printSection(`Dependency Compatibility at ${resolvedToVersion}`);
+      dependencyCompatibility.forEach((c) => {
+        const label = `${c.package}@${c.version}`;
+        if (c.status === 'error') printError(label); else printWarning(label);
+        c.messages.forEach((m) => console.log(`  • ${m}`));
       });
     }
 
@@ -205,7 +243,9 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
     }
 
     printSection('Node.js Environment');
-    if (nodeIssues.length === 0) {
+    if (nodeIssues.length === 0 && !environmentVerified.node) {
+      printInfo('Not verified — could not detect a Node.js version to compare');
+    } else if (nodeIssues.length === 0) {
       printSuccess('Current Node.js version satisfies target requirements (where detectable)');
     } else {
       nodeIssues.forEach((i) => {
@@ -217,7 +257,9 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
     }
 
     printSection('Android Environment');
-    if (androidIssues.length === 0) {
+    if (androidIssues.length === 0 && !environmentVerified.android) {
+      printInfo('Not verified — no android/ directory found (managed/prebuild project), so the Android toolchain was not checked');
+    } else if (androidIssues.length === 0) {
       printSuccess('Current Android toolchain satisfies target requirements (where detectable)');
     } else {
       androidIssues.forEach((i) => {
@@ -229,7 +271,9 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
     }
 
     printSection('iOS Environment');
-    if (iosIssues.length === 0) {
+    if (iosIssues.length === 0 && !environmentVerified.ios) {
+      printInfo('Not verified — no ios/ directory found (managed/prebuild project), so the iOS toolchain was not checked');
+    } else if (iosIssues.length === 0) {
       printSuccess('Current iOS toolchain satisfies target requirements (where detectable)');
     } else {
       iosIssues.forEach((i) => {

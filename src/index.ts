@@ -21,6 +21,7 @@ import { policyCommand } from './commands/policy.js';
 import { baselineCommand } from './commands/baseline.js';
 import { reportCommand } from './commands/report.js';
 import { watchCommand } from './commands/watch.js';
+import { accessibilityCommand } from './commands/accessibility.js';
 import { architectureCommand } from './commands/architecture.js';
 import { nativeCommand } from './commands/native.js';
 import { pageSize16kCommand } from './commands/pageSize16k.js';
@@ -45,12 +46,30 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
+// Commands call process.exit(1) right after printing (e.g. `security --json` on findings). When
+// stdout is a pipe, a large payload is still buffered at that point and an immediate exit
+// truncates it (observed at 64KB), corrupting piped JSON — so wait for the buffer to drain.
+const exitNow = process.exit.bind(process) as (code?: number) => never;
+process.exit = ((code?: number) => {
+  if (code !== undefined) process.exitCode = code;
+  if (process.stdout.writableLength === 0) return exitNow(code);
+  process.stdout.write('', () => exitNow(code));
+  return undefined as never;
+}) as typeof process.exit;
+
 const program = new Command();
 
 program
   .name('rn-dep-scanner')
   .description('React Native dependency scanner - compatibility, breaking changes & security vulnerabilities')
-  .version(version);
+  .version(version)
+  .option('--offline', 'Make no network calls (OSV.dev, npm registry); network-backed sections report as skipped')
+  .option('--timeout <ms>', 'Per-request network timeout in milliseconds (default 8000)')
+  .hook('preAction', () => {
+    const globals = program.opts<{ offline?: boolean; timeout?: string }>();
+    if (globals.offline) process.env.RN_DEP_SCANNER_OFFLINE = '1';
+    if (globals.timeout) process.env.RN_DEP_SCANNER_TIMEOUT_MS = globals.timeout;
+  });
 
 program
   .command('check', { isDefault: true })
@@ -61,9 +80,11 @@ program
   .option('--cwd <path>', 'Working directory')
   .option('--no-security', 'Skip checking for known vulnerabilities via OSV.dev (enabled by default, requires network)')
   .option('--profile', 'Print a per-step timing breakdown of the scan itself')
+  .option('--verbose', 'List every security advisory instead of one grouped block per package')
   .option('--all-workspaces', 'Check every workspace package in the monorepo, not just --cwd, and aggregate the results')
   .action(async (options) => {
     await checkCommand({
+      verbose: options.verbose || false,
       json: options.json || false,
       html: options.html || false,
       strict: options.strict || false,
@@ -135,8 +156,14 @@ program
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
   .option('--all-workspaces', 'Scan every workspace package in the monorepo, not just --cwd, and aggregate the results')
+  .option('--verbose', 'List every advisory instead of one grouped block per package')
+  .option('--summary', 'Only severity counts and one line per affected package')
+  .option('--fail-on <severity>', 'Exit 1 when a finding at or above this severity exists: critical, high (default), moderate, low, none')
   .action(async (options) => {
     await securityCommand({
+      verbose: options.verbose || false,
+      summary: options.summary || false,
+      ...(options.failOn ? { failOn: options.failOn } : {}),
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
@@ -193,8 +220,10 @@ program
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
   .option('--all-workspaces', 'Report against every workspace package in the monorepo, not just --cwd')
+  .option('--verbose', 'List every package name under each license instead of counts only')
   .action(async (options) => {
     await licensesCommand({
+      verbose: options.verbose || false,
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
@@ -257,6 +286,22 @@ program
   });
 
 program
+  .command('a11y')
+  .description('Flag interactive elements (Pressable, Touchable*, Image, TextInput, ...) missing accessibility labels')
+  .option('--json', 'Output as JSON')
+  .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
+  .option('--strict', 'Exit with code 1 if a high-confidence missing label is found')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (options) => {
+    await accessibilityCommand({
+      json: options.json || false,
+      html: options.html || false,
+      strict: options.strict || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
   .command('ai-exposure')
   .description('Detect direct client-side calls to AI provider SDKs and AI-provider-key-shaped literals in source')
   .option('--json', 'Output as JSON')
@@ -291,8 +336,10 @@ program
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
   .option('--all-workspaces', 'Evaluate every workspace package in the monorepo, not just --cwd')
+  .option('--init', 'Create a starter .rn-dep-scanner.json with example policy rules, then exit')
   .action(async (options) => {
     await policyCommand({
+      init: options.init || false,
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
@@ -334,6 +381,8 @@ program
   .command('watch')
   .description('Run check repeatedly on an interval until interrupted')
   .option('--interval <seconds>', 'Seconds between scans (default 300)', (v) => parseInt(v, 10))
+  .option('--once', 'Run a single scan and exit')
+  .option('--iterations <n>', 'Stop automatically after n scans (default: run until Ctrl+C)', (v) => parseInt(v, 10))
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
@@ -343,6 +392,7 @@ program
       json: options.json || false,
       html: options.html || false,
       interval: options.interval,
+      iterations: options.once ? 1 : options.iterations,
     });
   });
 
@@ -444,16 +494,16 @@ program
   .option('--cwd <path>', 'Working directory')
   .option('--all-workspaces', 'Assess every workspace package in the monorepo, not just --cwd, and aggregate the results')
   .action(async (options) => {
-    if (!options.to && !options.latest) {
-      console.error('error: one of --to <version> or --latest is required');
-      process.exit(1);
+    const assumeLatest = !options.to && !options.latest;
+    if (assumeLatest && !options.json && !options.html) {
+      console.error('No target given (--to <version> or --latest) — assuming --latest.');
     }
     await upgradeCommand(options.to, {
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
       allWorkspaces: options.allWorkspaces || false,
-      latest: options.latest || false,
+      latest: options.latest || assumeLatest,
     });
   });
 
@@ -467,7 +517,7 @@ if (firstArg && !firstArg.startsWith('-') && firstArg !== 'help') {
   const knownCommands = program.commands.map((cmd) => cmd.name());
   if (!knownCommands.includes(firstArg)) {
     printError(`Unknown command: "${firstArg}"`);
-    console.log(`\nRun 'rn-dep-scanner --help' to see the full command list, or 'rn-dep-scanner check' for the default dependency-compatibility scan.`);
+    console.log(`\nRun 'npx rn-dep-scanner --help' to see the full command list, or 'npx rn-dep-scanner check' for the default dependency-compatibility scan.`);
     process.exit(1);
   }
 }

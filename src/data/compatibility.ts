@@ -11,7 +11,8 @@ export const compatibilityRules: CompatibilityRule[] = [
   {
     package: 'react-native-reanimated',
     version: '3.x',
-    reactNative: '>=0.72 <0.80',
+    reactNative: '>=0.72',
+    reactNativeTested: '>=0.72 <0.80',
     react: '>=18.0.0',
   },
 

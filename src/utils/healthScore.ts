@@ -12,9 +12,12 @@ export interface HealthScoreResult {
   total: number;
   /** True when few enough dependencies were analyzed that the score shouldn't be read as an all-clear. */
   lowCoverage: boolean;
+  /** True when too few dependencies had rules for any number to mean "healthy" — show no score. */
+  insufficientData: boolean;
 }
 
 const LOW_COVERAGE_THRESHOLD = 0.2;
+const INSUFFICIENT_DATA_THRESHOLD = 0.5;
 
 export function computeHealthScore(breakdown: HealthScoreInput): HealthScoreResult {
   const analyzed = breakdown.total - breakdown.notChecked;
@@ -30,5 +33,7 @@ export function computeHealthScore(breakdown: HealthScoreInput): HealthScoreResu
 
   const lowCoverage = breakdown.total > 0 && analyzed / breakdown.total < LOW_COVERAGE_THRESHOLD;
 
-  return { score, analyzed, total: breakdown.total, lowCoverage };
+  const insufficientData = breakdown.total > 0 && analyzed / breakdown.total < INSUFFICIENT_DATA_THRESHOLD;
+
+  return { score, analyzed, total: breakdown.total, lowCoverage, insufficientData };
 }

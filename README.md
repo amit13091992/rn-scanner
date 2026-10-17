@@ -39,7 +39,7 @@ pnpm add -D rn-dep-scanner
 yarn add -D rn-dep-scanner
 ```
 
-After a global install, `rn-dep-scanner <command>` works directly — no `npx` needed. If it
+After a global install, `rn-dep-scanner <command>` also works directly (no `npx` needed). Every example below uses `npx rn-dep-scanner <command>`, which works with or without a global install. If it
 doesn't (an old install predating a fix, or your global bin directory isn't on `PATH`), run
 `npm config get prefix` and confirm that prefix's `bin/` is on your `PATH`; `npx rn-dep-scanner`
 always works as a fallback regardless, since it resolves and runs the package without relying
@@ -49,13 +49,13 @@ on `PATH`.
 
 ```bash
 cd your-react-native-project
-rn-dep-scanner              # same as `rn-dep-scanner check` — the default command
-rn-dep-scanner doctor       # is your native toolchain (JDK/AGP/Xcode/...) ready to build?
-rn-dep-scanner upgrade --to 0.81.0   # what would upgrading to RN 0.81 break?
-rn-dep-scanner upgrade --latest      # ...or just assess against whatever RN's latest is right now
+npx rn-dep-scanner              # same as `npx rn-dep-scanner check` — the default command
+npx rn-dep-scanner doctor       # is your native toolchain (JDK/AGP/Xcode/...) ready to build?
+npx rn-dep-scanner upgrade --to 0.81.0   # what would upgrading to RN 0.81 break?
+npx rn-dep-scanner upgrade --latest      # ...or just assess against whatever RN's latest is right now
 ```
 
-Run `rn-dep-scanner --help` for the live command list, or `rn-dep-scanner <command> --help` for
+Run `npx rn-dep-scanner --help` for the live command list, or `rn-dep-scanner <command> --help` for
 any command's exact flags — this README is kept in sync with that output, but the CLI itself is
 always the source of truth.
 
@@ -88,6 +88,7 @@ always the source of truth.
 | [`native`](#native) | "Native toolchain checks, on their own" |
 | [`16kb`](#16kb) | "Android 16KB page-size alignment, on its own" |
 | [`report`](#report) | "Give me a shareable Markdown/HTML summary" |
+| [`a11y`](#a11y) | "Which buttons/images have no accessibility label?" |
 | [`watch`](#watch) | "Keep re-running check in the background" |
 
 Every command supports `--cwd <path>` (defaults to the current directory) unless noted
@@ -127,7 +128,7 @@ legacy bridge is removed). `--profile` prints a per-step timing breakdown of the
 ### `doctor`
 
 ```bash
-rn-dep-scanner doctor [--json] [--html [path]] [--cwd <path>] [--ipa <path>] [--profile] [--all-workspaces]
+npx rn-dep-scanner doctor [--json] [--html [path]] [--cwd <path>] [--ipa <path>] [--profile] [--all-workspaces]
 ```
 
 Checks whether your machine/project is actually ready to *build*, separately from whether your
@@ -149,7 +150,7 @@ informational dSYM-presence check for a built `.ipa`/`.xcarchive` (doesn't affec
 ### `outdated`
 
 ```bash
-rn-dep-scanner outdated [--major-only] [--recommend] [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner outdated [--major-only] [--recommend] [--json] [--html [path]] [--cwd <path>]
 ```
 
 Lists available updates for your direct dependencies, grouped by major/minor/patch severity.
@@ -161,8 +162,8 @@ project hasn't reached yet.
 ### `upgrade`
 
 ```bash
-rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
-rn-dep-scanner upgrade --latest [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner upgrade --latest [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 One of `--to <version>` or `--latest` is required. `--latest` resolves the target version from
@@ -193,7 +194,7 @@ output, or the `upgradePath` array in `--json`.
 ### `compare-rn <from> <to>`
 
 ```bash
-rn-dep-scanner compare-rn <from> <to> [--json] [--html [path]]
+npx rn-dep-scanner compare-rn <from> <to> [--json] [--html [path]]
 ```
 
 Pure lookup against the built-in RN-version → native-toolchain-requirement registry — diffs two
@@ -206,7 +207,7 @@ RN versions' Node/Android/iOS baselines with no project scan needed. No `--cwd`.
 ### `why <package>`
 
 ```bash
-rn-dep-scanner why <package> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner why <package> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Traces every install path and resolved version a package appears at in your dependency tree.
@@ -215,7 +216,7 @@ Traces every install path and resolved version a package appears at in your depe
 ### `tree [package]`
 
 ```bash
-rn-dep-scanner tree [package] [--duplicates] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner tree [package] [--duplicates] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Prints the full dependency tree, or the subtree rooted at `package` if given. `--duplicates`
@@ -229,14 +230,14 @@ graph.
 ### `graph`
 
 ```bash
-rn-dep-scanner graph [--json] [--html [path]] [--dot] [--cwd <path>]
+npx rn-dep-scanner graph [--json] [--html [path]] [--dot] [--cwd <path>]
 ```
 
 Exposes the dependency graph as raw data instead of a rendered tree — `--json` gives every
 node's id/name/version/parents/children; `--dot` gives Graphviz output:
 
 ```bash
-rn-dep-scanner graph --dot | dot -Tpng -o graph.png
+npx rn-dep-scanner graph --dot | dot -Tpng -o graph.png
 ```
 
 ---
@@ -246,7 +247,7 @@ rn-dep-scanner graph --dot | dot -Tpng -o graph.png
 ### `ai-exposure`
 
 ```bash
-rn-dep-scanner ai-exposure [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner ai-exposure [--json] [--html [path]] [--cwd <path>]
 ```
 
 Flags client-side AI exposure — a 2026 mobile-app risk category of its own: direct dependencies
@@ -262,7 +263,7 @@ literal is found.
 ### `security`
 
 ```bash
-rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (the same data `check`
@@ -276,7 +277,7 @@ gives a `workspaces[]` array plus a combined `summary`), instead of just the one
 ### `licenses`
 
 ```bash
-rn-dep-scanner licenses [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner licenses [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Reports each package's declared license across the full transitive tree, optionally flagging a
@@ -289,7 +290,7 @@ behavior as `security` above.
 ### `sbom`
 
 ```bash
-rn-dep-scanner sbom [--html [path]] [--cwd <path>]
+npx rn-dep-scanner sbom [--html [path]] [--cwd <path>]
 ```
 
 Exports a CycloneDX 1.5 Software Bill of Materials to stdout as JSON (no `--json` flag needed —
@@ -298,7 +299,7 @@ JSON is simply the default output; pass `--html` for an HTML rendering instead).
 ### `renovate-config`
 
 ```bash
-rn-dep-scanner renovate-config [--out <path>] [--cwd <path>]
+npx rn-dep-scanner renovate-config [--out <path>] [--cwd <path>]
 ```
 
 Generates a starter Renovate config aware of React Native's specific update risks — not a
@@ -314,7 +315,7 @@ to stdout by default; `--out <path>` writes the file (e.g. `--out renovate.json`
 ### `diff --from <dir> --to <dir>`
 
 ```bash
-rn-dep-scanner diff --from <dir> --to <dir> [--json] [--html [path]]
+npx rn-dep-scanner diff --from <dir> --to <dir> [--json] [--html [path]]
 ```
 
 `--from`/`--to` are required project directories (not lockfile paths). Compares their dependency
@@ -325,7 +326,7 @@ directories you pass are the inputs).
 ### `policy`
 
 ```bash
-rn-dep-scanner policy [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner policy [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and
@@ -338,8 +339,8 @@ means placing (or symlinking) the same config into each workspace package.
 ### `baseline`
 
 ```bash
-rn-dep-scanner baseline --create [--cwd <path>]           # snapshot current security findings
-rn-dep-scanner baseline [--json] [--html [path]] [--cwd <path>]   # report only what's new since the snapshot
+npx rn-dep-scanner baseline --create [--cwd <path>]           # snapshot current security findings
+npx rn-dep-scanner baseline [--json] [--html [path]] [--cwd <path>]   # report only what's new since the snapshot
 ```
 
 Useful for adopting the tool on a large existing project without a wall of pre-existing issues
@@ -360,7 +361,7 @@ machine/branch should track its own baseline independently.
 ### `why-not <package> <version>`
 
 ```bash
-rn-dep-scanner why-not <package> <version> [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner why-not <package> <version> [--json] [--html [path]] [--cwd <path>]
 ```
 
 Explains which installed package's declared peer/dependency range is blocking a specific
@@ -370,7 +371,7 @@ protocol reference) is reported as unknown, never guessed true or false.
 ### `impact <package> <version>`
 
 ```bash
-rn-dep-scanner impact <package> <version> [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner impact <package> <version> [--json] [--html [path]] [--cwd <path>]
 ```
 
 Goes further than `why-not`: breaking changes at that target version, the same peer/version
@@ -380,7 +381,7 @@ upgrading), plus plain-language recommended actions.
 ### `unused`
 
 ```bash
-rn-dep-scanner unused [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner unused [--json] [--html [path]] [--cwd <path>]
 ```
 
 Heuristic (regex-based `require`/`import` scan of project source) flagging declared dependencies
@@ -395,7 +396,7 @@ excluded automatically.
 ### `legacy-apis`
 
 ```bash
-rn-dep-scanner legacy-apis [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner legacy-apis [--json] [--html [path]] [--cwd <path>]
 ```
 
 Detects source imports of core React Native APIs that were removed and split into community
@@ -404,10 +405,31 @@ packages (`WebView`, `AsyncStorage`, `Clipboard`, `NetInfo`, `ListView`, and mor
 Import-based detection only — a deprecated prop/method on an API that otherwise still exists
 isn't covered.
 
+### `a11y`
+
+```bash
+npx rn-dep-scanner a11y [--json] [--html [path]] [--strict] [--cwd <path>]
+```
+
+Flags interactive elements — `Pressable`, `Touchable*`, `Image`, `Switch`, `TextInput`, `Button`,
+and any custom component given an `onPress` — that a screen reader can't describe: no
+`accessibilityLabel` / `aria-label` / `alt`, and no visible `<Text>` child to derive one from.
+Each finding has `file:line`, the component, and its **declared traits** (`accessibilityRole`,
+`accessibilityHint`, `accessibilityState`, `accessible`) as written in source. Labeled
+touchables with no `accessibilityRole` are listed separately as informational. `--strict`
+exits 1 on a high-confidence missing label.
+
+**Static only, and it says so.** Real native accessibility traits and on-screen frames exist only
+in a running app (iOS `UIAccessibility` / Android `AccessibilityNodeInfo`) — reading them needs an
+in-app native module or a simulator/device session, which a source scanner doesn't have. This
+command reports what the source declares instead (`runtimeInspection.available: false` in
+`--json`). A label supplied via a prop spread or wrapper component is invisible to it, so
+custom-component findings are marked low confidence.
+
 ### `bundle`
 
 ```bash
-rn-dep-scanner bundle [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner bundle [--json] [--html [path]] [--cwd <path>]
 ```
 
 Reports each direct dependency's on-disk install size, largest first — a quick "what's heavy"
@@ -417,7 +439,7 @@ included here but might not end up in an actual bundle).
 ### `architecture`
 
 ```bash
-rn-dep-scanner architecture [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner architecture [--json] [--html [path]] [--cwd <path>]
 ```
 
 Just the New Architecture (Fabric/TurboModules) compatibility check `check` already runs, on its
@@ -427,7 +449,7 @@ own. A package with no compatibility data reports `support: "data_unavailable"` 
 ### `native`
 
 ```bash
-rn-dep-scanner native [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner native [--json] [--html [path]] [--cwd <path>]
 ```
 
 Just the Android/iOS native toolchain check `doctor` already runs, on its own (no Hermes/Node/
@@ -437,7 +459,7 @@ Just the Android/iOS native toolchain check `doctor` already runs, on its own (n
 ### `16kb`
 
 ```bash
-rn-dep-scanner 16kb [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner 16kb [--json] [--html [path]] [--cwd <path>]
 ```
 
 Just the Android 16KB page-size alignment check `doctor` already runs, on its own. A
@@ -452,7 +474,7 @@ found but couldn't be parsed).
 ### `report`
 
 ```bash
-rn-dep-scanner report [--format md|html] [--out <path>] [--cwd <path>]
+npx rn-dep-scanner report [--format md|html] [--out <path>] [--cwd <path>]
 ```
 
 Renders a condensed health-score/compatibility/deprecated-packages/New-Architecture/security
@@ -462,11 +484,15 @@ deliberately smaller, decision-focused view, not a full mirror of `check --json`
 ### `watch`
 
 ```bash
-rn-dep-scanner watch [--interval <seconds>] [--json] [--html [path]] [--cwd <path>]
+npx rn-dep-scanner watch [--interval <seconds>] [--once] [--iterations <n>] [--json] [--html [path]] [--cwd <path>]
 ```
 
-Runs `check` on a repeating interval (default 300s) until interrupted (Ctrl+C) — for a
-long-running terminal/CI job. Each cycle runs non-strict so one bad cycle doesn't kill the loop.
+Runs `check` on a repeating interval (default 300s) — for a long-running terminal/CI job. It
+runs **until you press Ctrl+C by design**; use `--once` (single scan) or `--iterations <n>` to
+stop on its own. Between scans it prints a live countdown (a plain "Next scan in Ns" line when
+output isn't a terminal) so a 5-minute wait doesn't look like a hang. Each cycle runs non-strict,
+and a cycle that fails (e.g. a network error during the security scan) is reported and retried
+on the next cycle instead of ending the watch.
 
 ---
 
@@ -507,7 +533,7 @@ minimal, dependency-free HTML page: printed to stdout if no path is given, or wr
 file:
 
 ```bash
-rn-dep-scanner check --html report.html
+npx rn-dep-scanner check --html report.html
 ```
 
 If both `--json` and `--html` are passed, `--html` wins.
@@ -561,7 +587,8 @@ package).
   version that lost the hoist to a conflicting sibling has its license reported as unreadable.
 - `baseline` tracks security-vulnerability findings only; a compatibility warning or deprecated
   package isn't baselined.
-- `watch` has no CLI-exposed way to bound its iteration count — it runs until interrupted.
+- A compatibility rule can mark an upper React Native bound as *tested range* rather than a hard requirement (`reactNativeTested` in `data/compatibility.ts` / `customCompatibilityRules`): a project newer than that range gets a **warning** ("not known to be broken — verify on your build"), not an error. Only a violated *minimum* is an error.
+- `a11y` is a source scan (JSX tag scanner, no AST): it can't see a label passed through a prop spread or wrapper component, and can't report native traits/frames, which only exist in a running app.
 - `security`'s known-malware check (`data/knownMalwarePackages.ts`) is a small hand-curated list
   of confirmed incidents (Mini Shai-Hulud, ChainDrop, MALFEX), checked alongside — not instead
   of — OSV.dev, specifically to close the gap where a live worm-strain incident hasn't been
@@ -584,3 +611,13 @@ npm run test            # run the test suite
 ## License
 
 MIT
+
+### Network behaviour, security output and exit codes
+
+- **Offline / timeouts:** every command accepts `--offline` (no OSV.dev or npm registry calls; network-backed sections are reported as skipped) and `--timeout <ms>` (per-request timeout, default 8000; also `RN_DEP_SCANNER_TIMEOUT_MS`). `outdated` warns when registry lookups failed instead of silently reporting fewer updates.
+- **`security`:** advisories are grouped per package with a single "upgrade to" version and the shortest dependency path. `--verbose` lists every advisory, `--summary` prints counts plus one line per package, and `--fail-on <critical|high|moderate|low|none>` sets the exit-1 threshold (default `high`). `check` uses the same grouped format.
+- **`licenses`:** prints counts per license and calls out copyleft and unknown licenses; `--verbose` lists every package.
+- **`policy --init`:** writes a starter `.rn-dep-scanner.json` (never overwrites an existing one).
+- **`upgrade`:** with no `--to`/`--latest` it assumes `--latest`. Risk now accounts for how many React Native minors the jump spans and for installed packages whose rules fail at the target version, lists the reasons, and reports an Android/iOS toolchain as "not verified" when there is no `android/` or `ios/` directory.
+- **`unused`:** packages used via `package.json` `main`, Expo config plugins, `package.json` scripts, config files, or as a peer of another dependency are listed as implicitly used instead of unused.
+- **Health score:** shows "insufficient data" (and `healthScore: null` in `--json`) when fewer than half the dependencies have compatibility rules.

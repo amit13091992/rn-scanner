@@ -1,6 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { coerce, lt } from 'semver';
+import { coerce, gte, lt } from 'semver';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import { getReactNativeRequirements } from '../data/reactNative/index.js';
 import type { IosNativeRequirements } from '../types/reactNativeRequirements.js';
@@ -30,6 +30,22 @@ function resolveStatus(
   }
 
   return { status: 'ok', required };
+}
+
+function hasSceneLifecycle(cwd: string): boolean {
+  try {
+    const iosDir = join(cwd, 'ios');
+    for (const entry of readdirSync(iosDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const plist = join(iosDir, entry.name, 'Info.plist');
+      if (existsSync(plist) && readFileSync(plist, 'utf8').includes('UIApplicationSceneManifest')) {
+        return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 /**
@@ -137,6 +153,23 @@ export function analyzeIosEnvironment(cwd: string, rnVersion: string): Environme
     status: swiftHint.status,
     reason: swiftHint.reason,
   });
+
+  // Apple requires the UIScene lifecycle for apps built with the iOS 27 SDK; RN 0.88 adds
+  // SceneDelegate support (the AppDelegate path keeps working until then).
+  const rnCoerced = coerce(rnVersion);
+  if (hasIosDir && rnCoerced && gte(rnCoerced, '0.88.0')) {
+    const migrated = hasSceneLifecycle(cwd);
+    results.push({
+      name: 'iOS UIScene lifecycle',
+      current: migrated ? 'UIApplicationSceneManifest present' : 'not configured',
+      required: 'UIApplicationSceneManifest in Info.plist',
+      status: migrated ? 'ok' : 'warning',
+      source: 'ios/*/Info.plist',
+      reason: migrated
+        ? undefined
+        : 'Apps built with Xcode 27 / the iOS 27 SDK fail to launch without the UIScene lifecycle; move the RN entry point from AppDelegate to SceneDelegate (RN 0.88 migration).',
+    });
+  }
 
   return results;
 }

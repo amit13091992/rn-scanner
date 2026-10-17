@@ -11,6 +11,7 @@ import {
   printError,
   printInfo,
 } from '../utils/terminal.js';
+import { isOffline, networkFailureCount } from '../utils/network.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 import type { OutdatedPackage } from '../types/outdated.js';
 
@@ -51,6 +52,7 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
       dep.latestVersion = latestVersions.get(dep.name);
     });
 
+    const lookupsMissing = dependencies.filter((d) => !d.latestVersion).length;
     const outdated: OutdatedPackage[] = [];
 
     dependencies.forEach(dep => {
@@ -88,11 +90,24 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
           major: major.length,
           minor: minor.length,
           patch: patch.length,
+          registryLookupsMissing: lookupsMissing,
         },
         packages: outdated,
         ...(recommendations ? { recommendations } : {}),
       };
       emitStructuredOutput(result, 'Outdated Dependencies', options);
+      return;
+    }
+
+    if (lookupsMissing > 0) {
+      printWarning(
+        isOffline()
+          ? 'Offline mode: no registry lookups were made, so no updates can be reported.'
+          : `${lookupsMissing} of ${dependencies.length} registry lookup(s) failed or timed out (${networkFailureCount()} request failure(s)) — results may be incomplete. Retry, or raise --timeout <ms>.`
+      );
+    }
+
+    if (outdated.length === 0 && lookupsMissing === dependencies.length) {
       return;
     }
 

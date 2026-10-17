@@ -1,3 +1,5 @@
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { loadConfig } from '../utils/config.js';
@@ -12,6 +14,31 @@ export interface PolicyOptions {
   cwd?: string;
   /** Evaluate the policy against every workspace package in the monorepo, not just `cwd`. */
   allWorkspaces?: boolean;
+  /** Write a starter `.rn-dep-scanner.json` (refuses to overwrite an existing one) and exit. */
+  init?: boolean;
+}
+
+const STARTER_POLICY = {
+  bannedPackages: [],
+  licenseDenylist: ['GPL-3.0', 'AGPL-3.0'],
+  maxVulnerabilitySeverity: 'high',
+};
+
+function initPolicy(cwd: string, jsonMode: boolean, options: PolicyOptions): void {
+  const target = join(cwd, '.rn-dep-scanner.json');
+  if (existsSync(target)) {
+    const message = `${target} already exists — add "bannedPackages", "licenseDenylist" or "maxVulnerabilitySeverity" to it by hand; not overwriting.`;
+    if (jsonMode) emitStructuredOutput({ created: false, path: target, error: message }, 'Policy Init', options);
+    else printWarning(message);
+    return;
+  }
+  writeFileSync(target, `${JSON.stringify(STARTER_POLICY, null, 2)}\n`, 'utf-8');
+  if (jsonMode) {
+    emitStructuredOutput({ created: true, path: target, policy: STARTER_POLICY }, 'Policy Init', options);
+  } else {
+    printSuccess(`Created ${target}`);
+    printInfo('Starter rules: block GPL-3.0/AGPL-3.0 licenses and any vulnerability at "high" or above. Add package names to "bannedPackages" to forbid them, then run `npx rn-dep-scanner policy`.');
+  }
 }
 
 async function evaluateOneProject(cwd: string): Promise<{ result: PolicyResult; warnings: string[] }> {
@@ -26,7 +53,7 @@ async function evaluateOneProject(cwd: string): Promise<{ result: PolicyResult; 
 function printPolicyResult(result: PolicyResult, warnings: string[]): void {
   warnings.forEach((w) => printWarning(w));
   if (result.rulesConfigured === 0) {
-    printInfo('No policy rules configured — add "bannedPackages", "licenseDenylist", or "maxVulnerabilitySeverity" to .rn-dep-scanner.json to enable checks.');
+    printInfo('No policy rules configured. Run `npx rn-dep-scanner policy --init` to create a starter .rn-dep-scanner.json, or add "bannedPackages", "licenseDenylist" or "maxVulnerabilitySeverity" by hand.');
   } else if (result.passed) {
     printSuccess(`No policy violations (${result.rulesConfigured} rule(s) checked)`);
   } else {
@@ -38,6 +65,11 @@ export async function policyCommand(options: PolicyOptions = {}): Promise<void> 
   const cwd = options.cwd || process.cwd();
   const jsonMode = !!options.json || !!options.html;
   let violationCount = 0;
+
+  if (options.init) {
+    initPolicy(cwd, jsonMode, options);
+    return;
+  }
 
   try {
     if (options.allWorkspaces) {

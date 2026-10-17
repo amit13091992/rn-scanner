@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
 import { detectHermes } from '../detectors/hermes.js';
 import { analyzeHermes } from '../analyzers/hermes.js';
@@ -22,6 +24,13 @@ import {
 } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
+
+function noNativeLibrariesMessage(cwd: string, count: number): string {
+  const base = `No prebuilt native (.so) libraries found across ${count} dependenc${count === 1 ? 'y' : 'ies'} — either no native modules are installed, or their .so files haven't been generated yet (some compile from source during the Android build)`;
+  return existsSync(join(cwd, 'android'))
+    ? base
+    : `${base}. There is no android/ directory, so nothing has been built: run \`npx expo prebuild --platform android\` (Expo) and build the app, then re-run this check against the generated .so files or your APK/AAB.`;
+}
 
 function printEnvironmentRequirements(requirements: EnvironmentRequirement[]): void {
   for (const req of requirements) {
@@ -213,7 +222,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     if (pageSize.length === 0) {
       printInfo('No dependencies to check — no readable package.json, or no dependencies declared');
     } else if (pageSizeChecked.length === 0) {
-      printInfo(`No prebuilt native (.so) libraries found across ${pageSize.length} dependenc${pageSize.length === 1 ? 'y' : 'ies'} — either no native modules are installed, or their .so files haven't been generated yet (some compile from source during the Android build)`);
+      printInfo(noNativeLibrariesMessage(cwd, pageSize.length));
     } else if (pageSizeUnaligned.length === 0) {
       printSuccess(`All ${pageSizeChecked.length} checked native librar${pageSizeChecked.length === 1 ? 'y is' : 'ies are'} 16KB-page-size aligned`);
     } else {

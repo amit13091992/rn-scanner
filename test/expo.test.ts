@@ -144,3 +144,16 @@ test('getExpoSdkRequirements - SDK 56 pins React Native 0.85 (corrected from an 
   assert.equal(req?.newArchRequired, true);
   assert.equal(req?.confidence, 'confirmed');
 });
+
+test('analyzeExpoCompatibility - SDK 58 pins React Native 0.88', () => {
+  const dir = makeTempDir();
+  try {
+    const ok = analyzeExpoCompatibility(dir, '0.88.0', { dependencies: { expo: '~58.0.0' } });
+    assert.equal(ok.reactNativeMismatch, false);
+    assert.equal(ok.newArchRequired, true);
+    const bad = analyzeExpoCompatibility(dir, '0.86.0', { dependencies: { expo: '~58.0.0' } });
+    assert.equal(bad.reactNativeMismatch, true);
+  } finally {
+    cleanup(dir);
+  }
+});
