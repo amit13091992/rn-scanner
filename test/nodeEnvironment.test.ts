@@ -32,3 +32,18 @@ test('analyzeNodeEnvironment - unknown RN version produces an unknown status, no
   const [result] = analyzeNodeEnvironment('');
   assert.equal(result?.status, 'unknown');
 });
+
+test('analyzeNodeEnvironment - RN 0.88 warns on odd-numbered or pre-24.3 Node, matching the running process', () => {
+  const [major = 0, minor = 0] = process.version.replace(/^v/, '').split('.').map(Number);
+  const [result] = analyzeNodeEnvironment('0.88');
+  const meetsBaseline = major > 22 || (major === 22 && minor >= 13);
+  const unsupported = (major % 2 === 1 && major < 26) || (major === 24 && minor < 3);
+  if (meetsBaseline && unsupported) {
+    assert.equal(result?.status, 'warning');
+    assert.match(result?.reason ?? '', /supported engines range/);
+  } else if (meetsBaseline) {
+    assert.equal(result?.status, 'ok');
+  }
+  const [older] = analyzeNodeEnvironment('0.87');
+  assert.notEqual(older?.status, 'warning');
+});

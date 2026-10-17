@@ -8,6 +8,15 @@ export const compatibilityRules: CompatibilityRule[] = [
     reactNative: '>=0.78',
     react: '>=18.0.0',
   },
+  // Per-minor windows below come from each release's published `react-native` peerDependencies
+  // (npm registry, checked 2026-10-17): a lower bound is a hard requirement, the upper bound is
+  // the documented tested ceiling. Reanimated 4.6.x is omitted — its published peer range was
+  // not retrievable and secondary sources disagree.
+  { package: 'react-native-reanimated', version: '4.7.x', reactNative: '>=0.86', reactNativeTested: '>=0.86 <0.89' },
+  { package: 'react-native-reanimated', version: '4.5.x', reactNative: '>=0.83', reactNativeTested: '>=0.83 <0.87' },
+  { package: 'react-native-reanimated', version: '4.4.x', reactNative: '>=0.83', reactNativeTested: '>=0.83 <0.87' },
+  { package: 'react-native-reanimated', version: '4.3.x', reactNative: '>=0.81', reactNativeTested: '>=0.81 <0.86' },
+  { package: 'react-native-reanimated', version: '4.2.x', reactNative: '>=0.80', reactNativeTested: '>=0.80 <0.85' },
   {
     package: 'react-native-reanimated',
     version: '3.x',
@@ -91,6 +100,7 @@ export const compatibilityRules: CompatibilityRule[] = [
   },
 
   // react-native-worklets
+  { package: 'react-native-worklets', version: '0.13.x', reactNative: '>=0.86', reactNativeTested: '>=0.86 <0.89' },
   {
     package: 'react-native-worklets-core',
     version: '0.x',

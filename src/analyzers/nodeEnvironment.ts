@@ -1,5 +1,6 @@
 import { detectNodeVersion } from '../detectors/node.js';
 import { getReactNativeRequirements } from '../data/reactNative/index.js';
+import { coerce, gte } from 'semver';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 
 function compareVersionStrings(a: string, b: string): number {
@@ -45,6 +46,28 @@ export function analyzeNodeEnvironment(rnVersion: string): EnvironmentRequiremen
   }
 
   const meetsRequirement = compareVersionStrings(node.version, requirements.node) >= 0;
+  const rn = coerce(rnVersion);
+  const nodeSemver = coerce(node.version);
+  // RN 0.88's engines field is ^22.13 || ^24.3 || >=26: odd-numbered majors and 24.0-24.2 are
+  // outside it even though they numerically exceed the 22.13 baseline.
+  if (meetsRequirement && rn && gte(rn, '0.88.0') && nodeSemver) {
+    const unsupportedLine =
+      (nodeSemver.major % 2 === 1 && nodeSemver.major < 26) ||
+      (nodeSemver.major === 24 && !gte(nodeSemver, '24.3.0'));
+    if (unsupportedLine) {
+      return [
+        {
+          name: 'Node.js',
+          current: node.version,
+          required: requirements.node,
+          recommended: '22.13+, 24.3+ or 26+',
+          source: node.source,
+          status: 'warning',
+          reason: `Node ${node.version} is outside React Native ${rnVersion}'s supported engines range (^22.13 || ^24.3 || >=26); odd-numbered and pre-24.3 releases are unsupported.`,
+        },
+      ];
+    }
+  }
   return [
     {
       name: 'Node.js',

@@ -27,6 +27,7 @@ export interface LegacyApiUsageResult {
  * this is a starting point for review, not a compiler-grade usage analysis.
  */
 function buildPattern(entry: LegacyApiEntry): RegExp {
+  if (entry.matchPattern) return new RegExp(entry.matchPattern);
   const symbol = entry.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pkg = entry.fromPackage.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Named-import braces: `{ ...symbol... }` from the package, allowing other names alongside it.

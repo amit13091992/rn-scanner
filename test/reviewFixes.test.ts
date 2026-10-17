@@ -177,3 +177,11 @@ test('security sort is deterministic for equal severity and advisory counts', as
   };
   assert.equal(capture([mk('b'), mk('a')]), capture([mk('a'), mk('b')]));
 });
+
+import { detectBreakingChanges as detectBc58 } from '../src/analyzers/breakingChanges.js';
+test('expo SDK 58 breaking changes are reported for expo >=58 only', () => {
+  const dep = (v: string) => ({ name: 'expo', requestedVersion: v, resolvedVersion: v }) as never;
+  const r58 = detectBc58(dep('58.0.0'));
+  assert.ok(r58.issue?.changes.some((c) => c.includes('expo-sqlite')));
+  assert.ok(!detectBc58(dep('57.0.0')).issue?.changes.some((c) => c.includes('expo-sqlite')));
+});

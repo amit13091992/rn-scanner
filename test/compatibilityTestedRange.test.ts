@@ -23,3 +23,10 @@ test('reanimated 3.x inside the tested range stays compatible', () => {
   const r = analyzeCompatibility(dep('react-native-reanimated', '3.16.0'), '0.76.0', '18.3.1');
   assert.equal(r.status, 'compatible');
 });
+
+test('reanimated 4.7.x: error below RN 0.86, compatible on 0.88, warning on 0.89', () => {
+  const d = dep('react-native-reanimated', '4.7.1');
+  assert.equal(analyzeCompatibility(d, '0.85.0', '19.0.0').status, 'error');
+  assert.equal(analyzeCompatibility(d, '0.88.0', '19.3.0').status, 'compatible');
+  assert.equal(analyzeCompatibility(d, '0.89.0', '19.3.0').status, 'warning');
+});

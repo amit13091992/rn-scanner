@@ -80,6 +80,15 @@ export function analyzeExpoCompatibility(
     messages.push(`Expo SDK ${detection.sdkVersion} requires the New Architecture — the legacy bridge is not available.`);
   }
 
+  if (detection.sdkVersion >= 58) {
+    messages.push(
+      'Expo SDK 58 enables R8 minification by default in Android release builds — if release builds crash or lose reflection-based code, add keep rules or opt out via expo-build-properties (android.enableMinifyInReleaseBuilds).'
+    );
+    messages.push(
+      'Expo SDK 58 builds against the iOS 27 SDK and the UIScene lifecycle (Xcode 27 recommended); Swift Package Manager is experimental and opt-in (npx react-native spm) — CocoaPods remains the default.'
+    );
+  }
+
   if (requirements.confidence === 'estimated') {
     messages.push(`Expo SDK ${detection.sdkVersion}'s expected React Native version is an estimate — verify against https://expo.dev/changelog.`);
   }

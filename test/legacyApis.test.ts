@@ -71,3 +71,31 @@ test('legacyApisCommand - does not confuse a same-named symbol imported from an 
     cleanup(dir);
   }
 });
+
+test('legacy-apis - detects 0.87/0.88 deep imports, prefixed styles and Modal animated', async () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', dependencies: { 'react-native': '0.88.0' } }));
+    writeFileSync(
+      join(dir, 'App.tsx'),
+      [
+        "import Init from 'react-native/Libraries/Core/InitializeCore';",
+        "import T from 'react-native/Libraries/Components/Touchable/Touchable';",
+        'const s = { experimental_backgroundSize: [] };',
+        'const m = <Modal animated visible />;',
+      ].join('\n')
+    );
+    const { analyzeLegacyApiUsage } = await import('../src/analyzers/legacyApiUsage.js');
+    const symbols = analyzeLegacyApiUsage(dir).occurrences.map((o) => o.symbol);
+    for (const expected of [
+      'react-native/Libraries/Core/InitializeCore',
+      'react-native/Libraries/*',
+      'experimental_background*',
+      'Modal animated prop',
+    ]) {
+      assert.ok(symbols.includes(expected), `missing ${expected}`);
+    }
+  } finally {
+    cleanup(dir);
+  }
+});

@@ -157,3 +157,16 @@ test('analyzeExpoCompatibility - SDK 58 pins React Native 0.88', () => {
     cleanup(dir);
   }
 });
+
+test('analyzeExpoCompatibility - SDK 58 surfaces the R8 and iOS 27 advisories, SDK 57 does not', () => {
+  const dir = makeTempDir();
+  try {
+    const r58 = analyzeExpoCompatibility(dir, '0.88.0', { dependencies: { expo: '~58.0.0' } });
+    assert.ok(r58.messages.some((m) => m.includes('R8')));
+    assert.ok(r58.messages.some((m) => m.includes('Swift Package Manager')));
+    const r57 = analyzeExpoCompatibility(dir, '0.86.0', { dependencies: { expo: '~57.0.0' } });
+    assert.ok(!r57.messages.some((m) => m.includes('R8')));
+  } finally {
+    cleanup(dir);
+  }
+});
