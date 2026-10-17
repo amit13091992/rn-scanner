@@ -2,9 +2,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RnDepScannerConfig } from '../types/config.js';
 import type { CompatibilityRule } from '../types/dependency.js';
+import type { AiAgentConfig } from '../types/aiAgent.js';
+import { DEFAULT_AI_AGENT_CONFIG } from '../types/aiAgent.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'ai'];
 const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
 export interface LoadConfigResult {
@@ -139,6 +141,36 @@ export function loadConfig(cwd: string): LoadConfigResult {
     }
   }
 
+  if ('ai' in record) {
+    const value = record.ai;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      warnings.push(`${CONFIG_FILENAME}: "ai" must be an object, got ${describeType(value)} — ignoring this field`);
+    } else {
+      const a = value as Record<string, unknown>;
+      const ai: RnDepScannerConfig['ai'] = {};
+      if ('enabled' in a) {
+        if (typeof a.enabled === 'boolean') {
+          ai.enabled = a.enabled;
+        } else {
+          warnings.push(`${CONFIG_FILENAME}: "ai.enabled" must be a boolean, got ${describeType(a.enabled)} — ignoring this field`);
+        }
+      }
+      if ('model' in a) {
+        if (typeof a.model === 'string' && a.model.length > 0) {
+          ai.model = a.model;
+        } else {
+          warnings.push(`${CONFIG_FILENAME}: "ai.model" must be a non-empty string, got ${describeType(a.model)} — ignoring this field`);
+        }
+      }
+      for (const aiKey of Object.keys(a)) {
+        if (aiKey !== 'enabled' && aiKey !== 'model') {
+          warnings.push(`${CONFIG_FILENAME}: unknown option "ai.${aiKey}" — ignoring (known options: enabled, model)`);
+        }
+      }
+      if (Object.keys(ai).length > 0) config.ai = ai;
+    }
+  }
+
   for (const key of Object.keys(record)) {
     if (!KNOWN_KEYS.includes(key as keyof RnDepScannerConfig)) {
       warnings.push(`${CONFIG_FILENAME}: unknown option "${key}" — ignoring (known options: ${KNOWN_KEYS.join(', ')})`);
@@ -146,4 +178,11 @@ export function loadConfig(cwd: string): LoadConfigResult {
   }
 
   return { config, warnings };
+}
+
+/** Merges a loaded config's partial `ai` block onto `DEFAULT_AI_AGENT_CONFIG` — callers always
+ *  get a complete `AiAgentConfig`, never a partial one, since `enabled` defaults to `false`
+ *  (opt-in) and `model` always needs a value to call `services/localModelClient.ts`. */
+export function resolveAiAgentConfig(config: RnDepScannerConfig): AiAgentConfig {
+  return { ...DEFAULT_AI_AGENT_CONFIG, ...config.ai };
 }

@@ -13,6 +13,7 @@ import { impactCommand } from './commands/impact.js';
 import { licensesCommand } from './commands/licenses.js';
 import { sbomCommand } from './commands/sbom.js';
 import { diffCommand } from './commands/diff.js';
+import { aiSetupCommand } from './commands/aiSetup.js';
 import { legacyApisCommand } from './commands/legacyApis.js';
 import { aiExposureCommand } from './commands/aiExposure.js';
 import { renovateConfigCommand } from './commands/renovateConfig.js';
@@ -62,6 +63,7 @@ program
   .option('--no-security', 'Skip checking for known vulnerabilities via OSV.dev (enabled by default, requires network)')
   .option('--profile', 'Print a per-step timing breakdown of the scan itself')
   .option('--all-workspaces', 'Check every workspace package in the monorepo, not just --cwd, and aggregate the results')
+  .option('--ai', 'Triage New Architecture "data_unavailable" findings through an embedded local AI model (opt-in, no external app to install — downloads a small model on first use; see "ai-setup" and docs/decisions/ADR-0009-embedded-local-model.md)')
   .action(async (options) => {
     await checkCommand({
       json: options.json || false,
@@ -71,6 +73,7 @@ program
       security: options.security !== false,
       profile: options.profile || false,
       allWorkspaces: options.allWorkspaces || false,
+      ai: options.ai || false,
     });
   });
 
@@ -267,6 +270,22 @@ program
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
+    });
+  });
+
+program
+  .command('ai-setup')
+  .description('Check local readiness for --ai (embedded model runtime available, model downloaded) — no external app required')
+  .option('--json', 'Output as JSON')
+  .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
+  .option('--cwd <path>', 'Working directory')
+  .option('--download', 'Download the configured model now instead of waiting for the first "check --ai" run')
+  .action(async (options) => {
+    await aiSetupCommand({
+      json: options.json || false,
+      html: options.html || false,
+      cwd: options.cwd || process.cwd(),
+      download: options.download || false,
     });
   });
 

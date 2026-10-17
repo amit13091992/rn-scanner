@@ -1,4 +1,5 @@
 import type { CompatibilityRule } from './dependency.js';
+import type { AiAgentConfig } from './aiAgent.js';
 
 export interface RnDepScannerConfig {
   /** Project-specific compatibility rules, same shape as the curated entries in
@@ -16,4 +17,7 @@ export interface RnDepScannerConfig {
   bannedPackages?: string[];
   /** The most severe OSV vulnerability severity this project will tolerate — 'critical'/'high'/'moderate'/'low'. A finding at or above this severity is a `policy` violation. Omitted means no severity gate. */
   maxVulnerabilitySeverity?: 'critical' | 'high' | 'moderate' | 'low';
+  /** Opt-in local AI agent settings (Phase 14) — talks only to a local Ollama daemon, never
+   *  a cloud API. Omitted/absent means disabled; see `DEFAULT_AI_AGENT_CONFIG`. */
+  ai?: Partial<AiAgentConfig>;
 }

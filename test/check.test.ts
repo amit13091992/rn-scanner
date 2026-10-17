@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkCommand } from '../src/commands/check.js';
+import { __setModuleLoaderForTests, __resetModuleLoaderForTests } from '../src/services/localModelClient.js';
 
 function makeTempDir(): string {
   return mkdtempSync(join(tmpdir(), 'check-test-'));
@@ -293,6 +294,72 @@ test('checkCommand - --all-workspaces outside a workspace falls back to a plain 
     assert.equal(result.reactNative.current, '0.75.0');
     assert.equal(result.workspaces, undefined);
   } finally {
+    cleanup(dir);
+  }
+});
+
+test('checkCommand - aiInsights is omitted entirely from json output when --ai is not passed', async () => {
+  const dir = makeTempDir();
+  try {
+    writeProject(dir, { 'react-native': '0.75.0', react: '18.3.1' });
+    const { output } = await captureStdout(() => checkCommand({ cwd: dir, json: true, security: false }));
+    const result = JSON.parse(output);
+    assert.equal('aiInsights' in result, false);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('checkCommand - --ai with no local AI runtime available reports scanned: false, not a crash', async () => {
+  const dir = makeTempDir();
+  __setModuleLoaderForTests(async () => ({
+    getLlama: async () => {
+      throw new Error('unsupported platform');
+    },
+  }) as never);
+  try {
+    writeProject(dir, { 'react-native': '0.75.0', react: '18.3.1' });
+    const { output } = await captureStdout(() => checkCommand({ cwd: dir, json: true, security: false, ai: true }));
+    const result = JSON.parse(output);
+    assert.equal(result.aiInsights.scanned, false);
+    assert.match(result.aiInsights.error, /local AI runtime/);
+    assert.deepEqual(result.aiInsights.findings, []);
+  } finally {
+    __resetModuleLoaderForTests();
+    cleanup(dir);
+  }
+});
+
+test('checkCommand - --ai with a mocked local model triages data_unavailable findings and tags source: ai-inferred', async () => {
+  const dir = makeTempDir();
+  // react-native-vision-camera has curated New Arch data, so pick a package name with none.
+  writeProject(dir, { 'react-native': '0.76.0', react: '18.3.1', 'react-native-totally-unknown-module': '1.0.0' });
+  __setModuleLoaderForTests(async () => ({
+    resolveModelFile: async () => '/fake/path/model.gguf',
+    getLlama: async () => ({
+      loadModel: async () => ({
+        createContext: async () => ({ getSequence: () => ({}), dispose: async () => {} }),
+        dispose: async () => {},
+      }),
+      createGrammarForJsonSchema: async () => ({}),
+    }),
+    LlamaChatSession: class {
+      async prompt() {
+        return JSON.stringify({ verdict: 'likely unsupported', confidence: 'low', reasoning: 'no package metadata available in this sandbox' });
+      }
+    },
+    defineChatSessionFunction: (spec: unknown) => spec,
+  }) as never);
+
+  try {
+    const { output } = await captureStdout(() => checkCommand({ cwd: dir, json: true, security: false, ai: true }));
+    const result = JSON.parse(output);
+    assert.equal(result.aiInsights.scanned, true);
+    assert.equal(result.aiInsights.findings.length, 1);
+    assert.equal(result.aiInsights.findings[0].verdict.source, 'ai-inferred');
+    assert.equal(result.aiInsights.findings[0].verdict.packageName, 'react-native-totally-unknown-module');
+  } finally {
+    __resetModuleLoaderForTests();
     cleanup(dir);
   }
 });

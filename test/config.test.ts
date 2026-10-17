@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig } from '../src/utils/config.js';
+import { loadConfig, resolveAiAgentConfig } from '../src/utils/config.js';
 
 function makeTempDir(): string {
   return mkdtempSync(join(tmpdir(), 'config-test-'));
@@ -161,4 +161,56 @@ test('loadConfig - skips an invalid customCompatibilityRules entry with a warnin
   } finally {
     cleanup(dir);
   }
+});
+
+test('loadConfig - reads a valid ai block', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(
+      join(dir, '.rn-dep-scanner.json'),
+      JSON.stringify({ ai: { enabled: true, model: 'hf:Org/Repo/model.gguf' } })
+    );
+    const { config, warnings } = loadConfig(dir);
+    assert.deepEqual(config.ai, { enabled: true, model: 'hf:Org/Repo/model.gguf' });
+    assert.deepEqual(warnings, []);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('loadConfig - rejects a malformed ai block field with a warning, keeps the valid fields', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ ai: { enabled: 'yes', model: 'qwen3:8b' } }));
+    const { config, warnings } = loadConfig(dir);
+    assert.deepEqual(config.ai, { model: 'qwen3:8b' });
+    assert.equal(warnings.length, 1);
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('loadConfig - an unknown ai sub-key is reported', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ ai: { enabled: true, apiKey: 'x' } }));
+    const { warnings } = loadConfig(dir);
+    assert.ok(warnings.some((w) => w.includes('ai.apiKey')));
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('resolveAiAgentConfig - defaults to disabled when no ai config is present', () => {
+  assert.deepEqual(resolveAiAgentConfig({}), {
+    enabled: false,
+    model: 'hf:Qwen/Qwen2.5-1.5B-Instruct-GGUF/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+  });
+});
+
+test('resolveAiAgentConfig - merges a partial ai config onto the defaults', () => {
+  assert.deepEqual(resolveAiAgentConfig({ ai: { enabled: true } }), {
+    enabled: true,
+    model: 'hf:Qwen/Qwen2.5-1.5B-Instruct-GGUF/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+  });
 });

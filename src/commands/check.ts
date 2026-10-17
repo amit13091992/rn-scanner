@@ -10,8 +10,9 @@ import { analyzeExpoGoSupport } from '../analyzers/expoGoSupport.js';
 import { analyzeDependencyCompleteness } from '../analyzers/dependencyCompleteness.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { analyzeAiSdkExposure } from '../analyzers/aiSdkExposure.js';
+import { analyzeAiInsights } from '../analyzers/aiInsights.js';
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
-import { loadConfig } from '../utils/config.js';
+import { loadConfig, resolveAiAgentConfig } from '../utils/config.js';
 import { Profiler } from '../utils/profiler.js';
 import {
   printHeader,
@@ -62,6 +63,11 @@ export interface CheckOptions {
    *  aggregate the results into one report. A no-op (same as omitting it) when `cwd` isn't
    *  inside a workspace. */
   allWorkspaces?: boolean;
+  /** Opt-in: triage New Architecture `data_unavailable` findings through an embedded local AI model
+   *  (ADR-0008). Off by default even if `.rn-dep-scanner.json` sets `ai.enabled` — a per-run
+   *  flag is required so a scripted/CI invocation never silently triggers the embedded
+   * model's first-use download. */
+  ai?: boolean;
 }
 
 async function runAcrossWorkspaces(cwd: string, options: CheckOptions): Promise<void> {
@@ -224,6 +230,17 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     );
     const newArchDataUnavailable = newArch.results.filter((r) => r.support === 'data_unavailable');
 
+    const aiRequested = options.ai === true;
+    const aiInsights = aiRequested
+      ? await profiler.time('analyzeAiInsights (embedded local model, opt-in)', () =>
+          analyzeAiInsights(
+            { ...resolveAiAgentConfig(config), enabled: true },
+            newArchDataUnavailable,
+            rnInfo.version ?? undefined
+          )
+        )
+      : null;
+
     const detectedBreakingChanges = breakingChangesResults.filter((r): r is typeof r & { issue: NonNullable<typeof r.issue> } => r.detected && r.issue !== undefined);
     const actionableBreakingChanges = detectedBreakingChanges.filter(c => !c.issue.stale);
     const healthBreakdown: HealthScoreBreakdown = {
@@ -303,6 +320,24 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         }
         if (newArchDataUnavailable.length > 0) {
           printInfo(`${newArchDataUnavailable.length} package(s) have no New Architecture compatibility data available — not a compatibility issue, just unverified (verify manually before upgrading)`);
+        }
+      }
+
+      if (aiInsights) {
+        printSection('AI Insights (local, opt-in — never affects the verdict above)');
+        if (!aiInsights.scanned) {
+          printWarning(aiInsights.error ?? 'AI triage could not run');
+        } else if (aiInsights.findings.length === 0) {
+          printInfo('No data_unavailable New Architecture findings to triage.');
+        } else {
+          aiInsights.findings.forEach((result) => {
+            if ('verdict' in result) {
+              console.log(`  🤖 ${result.finding.packageName}: ${result.verdict.verdict} (confidence: ${result.verdict.confidence}, source: ai-inferred)`);
+              console.log(`     └─ ${result.verdict.reasoning}`);
+            } else {
+              printWarning(`${result.finding.packageName}: AI triage failed — ${result.error}`);
+            }
+          });
         }
       }
 
@@ -623,6 +658,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         ...(expoCompat.isExpoProject ? { expoGoSupport } : {}),
         dependencyCompleteness,
         aiSdkExposure,
+        ...(aiInsights ? { aiInsights } : {}),
         security: securityEnabled
           ? securityResult
           : {
