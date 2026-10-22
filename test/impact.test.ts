@@ -48,7 +48,7 @@ test('impactCommand - reports currentVersion, a root-declared conflict, and a re
     assert.equal(result.targetVersion, '2.0.0');
     // Root package.json still declares "1.0.0" (exact pin) — upgrading to 2.0.0 conflicts with it.
     assert.ok(result.blockers.some((b: { requiredBy: string }) => b.requiredBy === 'package.json'));
-    assert.deepEqual(result.reverseDependents, ['your-app']);
+    assert.deepEqual(result.reverseDependents, ['app']);
     assert.ok(result.recommendedActions.length > 0);
   } finally {
     cleanup(dir);

@@ -78,7 +78,9 @@ function isStaleBreakingChange(introducedInVersion: string, currentVersion: stri
   if (current.major !== introduced.major) {
     return current.major - introduced.major >= 2;
   }
-  return current.minor - introduced.minor >= 6;
+  // A library's major-line migration (x.0.0) is almost certainly done once a few minors have
+  // shipped on it; react-native's 0.x minors are each a migration, so they keep the wider window.
+  return current.minor - introduced.minor >= (introduced.major === 0 ? 6 : 3);
 }
 
 export interface BreakingChangeCheckResult {
@@ -90,6 +92,34 @@ export interface BreakingChangeCheckResult {
 }
 
 const breakingChangeDatabase: BreakingChange[] = [
+  {
+    package: 'react-native',
+    introducedInVersion: '0.88.0',
+    affectedVersions: ['>=0.88.0'],
+    severity: 'medium',
+    changes: [
+      'No user-facing API removals, but several deprecations: react-native/Libraries/Core/InitializeCore (use react-native/setup-env), InputAccessoryView (iOS), experimental_background* style keys (use backgroundSize/Position/Repeat)',
+      'Events now follow the W3C EventTarget model by default — code reaching into RN event internals or the plugin registry may break',
+      'Behavior changes: Android User-Agent now includes app name/version, radial gradients reject percentage radii, iOS text defaults to right-aligned in RTL when textAlign is unset',
+      'iOS SceneDelegate (UIScene lifecycle) is added and becomes mandatory when building with the iOS 27 SDK / Xcode 27 — migrate AppDelegate entry points and add UIApplicationSceneManifest to Info.plist',
+      'ObjC TurboModule ArrayBuffer type change was reverted before 0.88.0; Android TurboModule ArrayBuffer bytes are only valid during a synchronous call (copy with ArrayBuffer.arrayBufferWithCopiedBytes)',
+      'Metro minimum is 0.87.1, React 19.3.0; babel-preset Platform.OS inlining now needs the inlinePlatform option',
+    ],
+    migrationGuide: 'https://reactnative.dev/blog/2026/10/19/react-native-0.88',
+  },
+  {
+    package: 'react-native',
+    introducedInVersion: '0.87.0',
+    affectedVersions: ['>=0.87.0'],
+    severity: 'high',
+    changes: [
+      'Strict TypeScript API is the default: deep imports from react-native/Libraries/* are type errors and ref types are now instance types',
+      'Removed: InteractionManager (use requestIdleCallback), the Touchable root export (use ViewProps), NativeMethods types, the Modal animated prop, and several StatusBar props',
+      'Deprecated: ImageBackground (use a View with an absolutely positioned Image)',
+      'Toolchain floor raised: Android Gradle Plugin 9, compileSdk/buildTools 37, Node 22.13+',
+    ],
+    migrationGuide: 'https://reactnative.dev/docs/upgrading',
+  },
   {
     package: 'react-native',
     introducedInVersion: '0.73.0',
@@ -307,30 +337,9 @@ export function detectBreakingChanges(
     };
   }
 
-  for (const change of relevantChanges) {
-    const affectsVersion = change.affectedVersions.some(range => versionInRange(version, range));
-
-    if (affectsVersion) {
-      return {
-        package: dep.name,
-        version,
-        detected: true,
-        hasData: true,
-        issue: {
-          package: dep.name,
-          version,
-          severity: change.severity,
-          changes: change.changes,
-          migrationGuide: change.migrationGuide,
-          references: change.references,
-          introducedInVersion: change.introducedInVersion,
-          stale: isStaleBreakingChange(change.introducedInVersion, staleAsOfVersion ?? version),
-          ...(isTransition
-            ? { relevance: classifyRelevance(change.introducedInVersion, staleAsOfVersion ?? version, change.severity) }
-            : {}),
-        },
-      };
-    }
+  const all = collectBreakingChanges(dep, relevantChanges, version, staleAsOfVersion, isTransition);
+  if (all.length > 0) {
+    return { package: dep.name, version, detected: true, hasData: true, issue: all[0]! };
   }
 
   return {
@@ -339,6 +348,52 @@ export function detectBreakingChanges(
     detected: false,
     hasData: true,
   };
+}
+
+function compareIntroduced(a: BreakingChange, b: BreakingChange): number {
+  return compareVersions(b.introducedInVersion, a.introducedInVersion);
+}
+
+/**
+ * Every database entry that applies to `version`, newest first. All non-stale entries are
+ * returned (a project on react-native 0.88 is affected by both the 0.87 and 0.88 notes); if
+ * every match is stale, only the newest is kept as a single historical note — the older
+ * stale ones would just be noise. Previously the first-listed entry won, so an old entry such
+ * as react-native 0.73 permanently hid every newer one.
+ */
+function collectBreakingChanges(
+  dep: DependencyInfo,
+  candidates: BreakingChange[],
+  version: string,
+  staleAsOfVersion: string | undefined,
+  isTransition: boolean
+): BreakingChangeIssue[] {
+  const issues = candidates
+    .filter((change) => change.affectedVersions.some((range) => versionInRange(version, range)))
+    .sort(compareIntroduced)
+    .map((change): BreakingChangeIssue => ({
+      package: dep.name,
+      version,
+      severity: change.severity,
+      changes: change.changes,
+      migrationGuide: change.migrationGuide,
+      references: change.references,
+      introducedInVersion: change.introducedInVersion,
+      stale: isStaleBreakingChange(change.introducedInVersion, staleAsOfVersion ?? version),
+      ...(isTransition
+        ? { relevance: classifyRelevance(change.introducedInVersion, staleAsOfVersion ?? version, change.severity) }
+        : {}),
+    }));
+
+  // An entry from an earlier major line is superseded once a newer major's entry applies
+  // (react-navigation 7.x is not asked to re-review the 6.0 migration). 0.x packages keep every
+  // minor: each react-native minor is its own migration.
+  const newest = issues[0];
+  const newestMajor = newest ? parseVersion(newest.introducedInVersion).major : 0;
+  const current = newestMajor === 0 ? issues : issues.filter((issue) => parseVersion(issue.introducedInVersion).major === newestMajor);
+
+  const fresh = current.filter((issue) => !issue.stale);
+  return fresh.length > 0 ? fresh : current.slice(0, 1);
 }
 
 /**
@@ -359,9 +414,15 @@ export function analyzeBreakingChanges(
   isTransition = false
 ): BreakingChangeCheckResult[] {
   const referenceByName = new Map(referenceDependencies.map(dep => [dep.name, dep]));
-  return dependencies.map(dep => {
+  return dependencies.flatMap(dep => {
     const reference = referenceByName.get(dep.name);
     const staleAsOfVersion = reference ? (reference.resolvedVersion || reference.requestedVersion) : undefined;
-    return detectBreakingChanges(dep, staleAsOfVersion, isTransition);
+    const primary = detectBreakingChanges(dep, staleAsOfVersion, isTransition);
+    if (!primary.detected) return [primary];
+    const version = dep.resolvedVersion || dep.requestedVersion;
+    const entries = breakingChangeDatabase.filter((change) => change.package === dep.name);
+    return collectBreakingChanges(dep, entries, version, staleAsOfVersion, isTransition).map(
+      (issue): BreakingChangeCheckResult => ({ package: dep.name, version, detected: true, hasData: true, issue })
+    );
   });
 }

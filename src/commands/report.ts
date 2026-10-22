@@ -33,7 +33,7 @@ export async function reportCommand(options: ReportOptions = {}): Promise<void> 
     const packageJson = await readPackageJson(cwd);
     const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
     const rnInfo = detectReactNativeVersions(cwd);
-    const compatibilityIssues = analyzeAllDependencies(dependencies, rnInfo.version, rnInfo.react);
+    const compatibilityIssues = analyzeAllDependencies(dependencies, rnInfo.version, rnInfo.react, [], cwd);
     const deprecatedPackages = checkDeprecatedPackages(dependencies.map((d) => d.name));
     const newArch = analyzeNewArchitecture(dependencies, rnInfo.version);
     const graph = await buildDependencyGraph(cwd);

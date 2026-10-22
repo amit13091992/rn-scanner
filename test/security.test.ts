@@ -96,9 +96,10 @@ test('securityCommand - json output finds a vulnerable transitive package with i
 test('securityCommand - json output reports a clean scan without exiting non-zero when nothing is found', async () => {
   const dir = makeTempDir();
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (url: string | URL) => {
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
     if (url.toString().includes('querybatch')) {
-      return { ok: true, json: async () => ({ results: [] }) } as Response;
+      const n = (JSON.parse(String(init?.body)) as { queries: unknown[] }).queries.length;
+      return { ok: true, json: async () => ({ results: Array.from({ length: n }, () => ({ vulns: [] })) }) } as Response;
     }
     return { ok: false } as Response;
   }) as typeof fetch;

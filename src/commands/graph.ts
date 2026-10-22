@@ -36,7 +36,7 @@ export async function graphCommand(options: GraphOptions = {}): Promise<void> {
     } else if (options.dot) {
       const lines = ['digraph dependencies {'];
       graph.nodes.forEach((node, id) => {
-        const label = id === graph.root ? 'your-app' : `${node.name}@${node.version}`;
+        const label = id === graph.root ? (node.name || 'your-app') : `${node.name}@${node.version}`;
         lines.push(`  "${id}" [label="${label.replace(/"/g, '\\"')}"];`);
       });
       graph.nodes.forEach((node, id) => {

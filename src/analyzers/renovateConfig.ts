@@ -58,7 +58,7 @@ export function buildRenovateConfig(
   if (nativeModuleNames.length > 0) {
     packageRules.push({
       groupName: 'Native modules (requires a native rebuild)',
-      matchPackagePatterns: [NATIVE_MODULE_PATTERN],
+      matchPackageNames: [`/${NATIVE_MODULE_PATTERN}/`],
       description: 'Ships native Android/iOS code — can break at runtime without a type error, so review the changelog before merging.',
     });
   }

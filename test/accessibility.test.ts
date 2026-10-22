@@ -63,3 +63,10 @@ test('a template-literal accessibilityLabel containing ${...} is recognised', ()
   const f = scan('<TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove ${item.name}`} onPress={a}><Icon/></TouchableOpacity>');
   assert.equal(f.length, 0);
 });
+
+test('a11y - a project-local Button with a label prop is not judged by react-native Button\'s title contract', () => {
+  const local = `import { Button } from './Button';\nconst a = <Button label="Save" onPress={go} />;`;
+  assert.equal(scanSourceForAccessibility(local, 'a.tsx').findings.length, 0);
+  const core = `import { Button } from 'react-native';\nconst a = <Button onPress={go} />;`;
+  assert.equal(scanSourceForAccessibility(core, 'b.tsx').findings.length, 1);
+});

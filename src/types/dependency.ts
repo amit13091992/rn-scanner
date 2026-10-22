@@ -51,5 +51,5 @@ export interface CompatibilityCheckResult {
   status: CompatibilityStatus;
   reason?: string;
   messages: string[];
-  detectedFrom: 'rules' | 'no-rules' | 'no-lock-file';
+  detectedFrom: 'rules' | 'no-rules' | 'no-lock-file' | 'peer-dependencies';
 }

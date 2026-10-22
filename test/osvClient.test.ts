@@ -209,15 +209,13 @@ test('queryVulnerabilities - a shared vulnerability ID across two packages is fe
   }
 });
 
-test('queryVulnerabilities - a failed detail fetch drops just that vulnerability, not the whole scan', async () => {
+test('queryVulnerabilities - a detail fetch that keeps failing keeps the finding (id + link, unknown severity) instead of hiding it', async () => {
+  process.env.RN_DEP_SCANNER_RETRY_DELAY_MS = '0';
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL) => {
     const urlStr = url.toString();
     if (urlStr.includes('querybatch')) {
       return { ok: true, json: async () => ({ results: [{ vulns: [{ id: 'GHSA-unreachable' }] }] }) } as Response;
-    }
-    if (urlStr.includes('/vulns/GHSA-unreachable')) {
-      return { ok: false } as Response;
     }
     return { ok: false } as Response;
   }) as typeof fetch;
@@ -225,7 +223,75 @@ test('queryVulnerabilities - a failed detail fetch drops just that vulnerability
   try {
     const result = await queryVulnerabilities([{ name: 'pkg', version: '1.0.0' }]);
     assert.equal(result.scanned, true);
-    assert.deepEqual(result.results, []);
+    assert.equal(result.results[0]?.vulnerabilities[0]?.id, 'GHSA-unreachable');
+    assert.equal(result.results[0]?.vulnerabilities[0]?.severity, 'unknown');
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.RN_DEP_SCANNER_RETRY_DELAY_MS;
+  }
+});
+
+test('queryVulnerabilities - a transient failure is retried and the scan still succeeds', async () => {
+  process.env.RN_DEP_SCANNER_RETRY_DELAY_MS = '0';
+  const originalFetch = globalThis.fetch;
+  let batchCalls = 0;
+  globalThis.fetch = (async (url: string | URL) => {
+    if (url.toString().includes('querybatch')) {
+      batchCalls++;
+      if (batchCalls === 1) return { ok: false } as Response;
+      return { ok: true, json: async () => ({ results: [{ vulns: [] }] }) } as Response;
+    }
+    return { ok: false } as Response;
+  }) as typeof fetch;
+  try {
+    const result = await queryVulnerabilities([{ name: 'pkg', version: '1.0.0' }]);
+    assert.equal(result.scanned, true);
+    assert.equal(batchCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.RN_DEP_SCANNER_RETRY_DELAY_MS;
+  }
+});
+
+test('queryVulnerabilities - more than 500 packages are split across several batch requests', async () => {
+  const originalFetch = globalThis.fetch;
+  const sizes: number[] = [];
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    if (url.toString().includes('querybatch')) {
+      const n = (JSON.parse(String(init?.body)) as { queries: unknown[] }).queries.length;
+      sizes.push(n);
+      return { ok: true, json: async () => ({ results: Array.from({ length: n }, () => ({ vulns: [] })) }) } as Response;
+    }
+    return { ok: false } as Response;
+  }) as typeof fetch;
+  try {
+    const pkgs = Array.from({ length: 1200 }, (_, i) => ({ name: `p${i}`, version: '1.0.0' }));
+    const result = await queryVulnerabilities(pkgs);
+    assert.equal(result.scanned, true);
+    assert.deepEqual(sizes, [500, 500, 200]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('queryVulnerabilities - follows next_page_token so advisories past the first page are not lost', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = url.toString();
+    if (u.includes('querybatch')) {
+      const body = JSON.parse(String(init?.body)) as { queries: Array<{ page_token?: string }> };
+      const paged = body.queries[0]?.page_token === 'T2';
+      return {
+        ok: true,
+        json: async () => ({ results: [paged ? { vulns: [{ id: 'GHSA-p2' }] } : { vulns: [{ id: 'GHSA-p1' }], next_page_token: 'T2' }] }),
+      } as Response;
+    }
+    const id = u.split('/').pop();
+    return { ok: true, json: async () => ({ id, summary: id, database_specific: { severity: 'HIGH' }, affected: [], references: [] }) } as Response;
+  }) as typeof fetch;
+  try {
+    const result = await queryVulnerabilities([{ name: 'pkg', version: '1.0.0' }]);
+    assert.deepEqual(result.results[0]?.vulnerabilities.map((v) => v.id).sort(), ['GHSA-p1', 'GHSA-p2']);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -177,16 +177,31 @@ function traitsOf(attrs: string): DeclaredTraits {
   return traits;
 }
 
+/** Modules each locally imported identifier comes from — lets a project's own `Button`
+ *  (`import { Button } from './Button'`, with a `label` prop) not be judged by react-native's
+ *  `Button` contract (`title`). */
+function importSources(src: string): Map<string, string> {
+  const sources = new Map<string, string>();
+  const importRe = /import\s+([^;'"]*?)\s+from\s+['"]([^'"]+)['"]/g;
+  let match: RegExpExecArray | null;
+  while ((match = importRe.exec(src))) {
+    for (const id of match[1]!.matchAll(/[A-Za-z_$][\w$]*/g)) sources.set(id[0], match[2]!);
+  }
+  return sources;
+}
+
 export function scanSourceForAccessibility(src: string, file: string): { findings: AccessibilityFinding[]; checked: number } {
   const findings: AccessibilityFinding[] = [];
   let checked = 0;
+  const imports = importSources(src);
   const tagStart = /<([A-Z][\w.]*)/g;
   let m: RegExpExecArray | null;
 
   while ((m = tagStart.exec(src))) {
     const tag = parseOpeningTag(src, m.index);
     if (!tag) continue;
-    const core = CORE_INTERACTIVE.has(tag.name);
+    const customButton = tag.name === 'Button' && imports.has('Button') && imports.get('Button') !== 'react-native';
+    const core = CORE_INTERACTIVE.has(tag.name) && !customButton;
     const hasPress = /(?:^|\s)(onPress|onLongPress)(?=[=\s])/.test(topLevelAttrs(tag.attrs));
     if (!core && !hasPress) continue;
     checked++;
@@ -199,7 +214,8 @@ export function scanSourceForAccessibility(src: string, file: string): { finding
     let labelled = hasLabel;
 
     if (!labelled) {
-      if (tag.name === 'Button') labelled = hasAnyAttr(tag.attrs, ['title']);
+      if (customButton) labelled = hasAnyAttr(tag.attrs, ['label', 'title', 'text']) || (!tag.selfClosing && hasVisibleTextChild(childrenText(src, tag)));
+      else if (tag.name === 'Button') labelled = hasAnyAttr(tag.attrs, ['title']);
       else if (tag.name === 'TextInput') labelled = hasAnyAttr(tag.attrs, ['placeholder']);
       else if (IMAGES.has(tag.name)) labelled = false;
       else if (!tag.selfClosing) labelled = hasVisibleTextChild(childrenText(src, tag));

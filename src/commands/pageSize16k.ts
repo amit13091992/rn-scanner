@@ -9,7 +9,7 @@ function noNativeLibrariesMessage(cwd: string, count: number): string {
   const base = `No prebuilt native (.so) libraries found across ${count} dependenc${count === 1 ? 'y' : 'ies'} — either no native modules are installed, or their .so files haven't been generated yet (some compile from source during the Android build)`;
   return existsSync(join(cwd, 'android'))
     ? base
-    : `${base}. There is no android/ directory, so nothing has been built: run \`npx expo prebuild --platform android\` (Expo) and build the app, then re-run this check against the generated .so files or your APK/AAB.`;
+    : `${base}. There is no android/ directory, so nothing has been built: generate or restore it (\`npx expo prebuild --platform android\` for Expo projects), build the app, then re-run this check against the generated .so files or your APK/AAB.`;
 }
 
 export interface PageSize16kOptions {

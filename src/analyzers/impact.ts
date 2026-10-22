@@ -40,7 +40,7 @@ export function analyzeImpact(
     resolvedVersion: targetVersion,
     type: current?.type ?? 'dependency',
   };
-  const breakingChange = detectBreakingChanges(syntheticDep, currentVersion ?? undefined);
+  const breakingChange = detectBreakingChanges(syntheticDep, currentVersion ?? undefined, true);
 
   const whyNot = analyzeWhyNot(cwd, dependencies, packageName, targetVersion);
 
@@ -48,14 +48,14 @@ export function analyzeImpact(
   if (graph) {
     findPathsGroupedByVersion(graph, packageName).forEach((occurrence) => {
       occurrence.paths.forEach((path) => {
-        const immediateParent = path.length >= 2 ? path[path.length - 2] : 'your-app';
+        const immediateParent = path.length >= 2 ? path[path.length - 2] : graph.nodes.get(graph.root)?.name || 'your-app';
         reverseDependents.add(immediateParent);
       });
     });
   }
 
   const recommendedActions: string[] = [];
-  if (breakingChange.detected && breakingChange.issue && !breakingChange.issue.stale) {
+  if (breakingChange.detected && breakingChange.issue && !breakingChange.issue.stale && breakingChange.issue.relevance !== 'historical') {
     recommendedActions.push(
       `Review breaking changes introduced in ${packageName}@${breakingChange.issue.introducedInVersion}` +
         (breakingChange.issue.migrationGuide ? ` (migration guide: ${breakingChange.issue.migrationGuide})` : '') +

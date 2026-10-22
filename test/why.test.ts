@@ -170,3 +170,38 @@ test('whyCommand - --all-workspaces outside a workspace falls back to a plain si
     cleanup(dir);
   }
 });
+
+test('whyCommand - json output says direct vs transitive, who requires it, and the declared range', async () => {
+  const dir = makeTempDir();
+  try {
+    writeNestedProject(dir);
+    const bar = JSON.parse((await captureStdout(() => whyCommand('bar', { cwd: dir, json: true }))).output);
+    assert.equal(bar.project, 'test-app');
+    assert.equal(bar.occurrences[0].direct, false);
+    assert.deepEqual(bar.occurrences[0].dependents, ['foo']);
+    assert.equal(bar.summary.duplicated, false);
+
+    const foo = JSON.parse((await captureStdout(() => whyCommand('foo', { cwd: dir, json: true }))).output);
+    assert.equal(foo.occurrences[0].direct, true);
+    assert.equal(foo.occurrences[0].requested, '1.0.0');
+    assert.equal(foo.occurrences[0].declaredIn, 'dependencies');
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('whyCommand - human output uses the real project name and suggests close matches when nothing is found', async () => {
+  const dir = makeTempDir();
+  try {
+    writeNestedProject(dir);
+    const found = await captureStdout(() => whyCommand('bar', { cwd: dir }));
+    assert.match(found.output, /test-app → foo → bar/);
+    assert.match(found.output, /transitive dependency/);
+    assert.match(found.output, /Required by: foo/);
+
+    const missing = await captureStdout(() => whyCommand('fooo', { cwd: dir }));
+    assert.match(missing.output, /Did you mean: foo/);
+  } finally {
+    cleanup(dir);
+  }
+});

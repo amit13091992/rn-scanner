@@ -1,7 +1,35 @@
-import { buildDependencyGraph, findPathsGroupedByVersion } from '../utils/dependencyGraph.js';
+import { basename } from 'node:path';
+import { buildDependencyGraph, describePackageOccurrences, suggestPackageNames } from '../utils/dependencyGraph.js';
+import { readPackageJson } from '../utils/packageJson.js';
 import { printHeader, printSection, printError, printWarning, printInfo } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
+
+const MAX_PATHS_SHOWN = 10;
+
+interface Manifest {
+  name?: string;
+  requested(pkg: string): { range: string; field: string } | undefined;
+}
+
+function readManifest(cwd: string): Manifest {
+  try {
+    const pkg = readPackageJson(cwd);
+    const fields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const;
+    return {
+      name: pkg.name,
+      requested: (name) => {
+        for (const field of fields) {
+          const range = pkg[field]?.[name];
+          if (range) return { range, field };
+        }
+        return undefined;
+      },
+    };
+  } catch {
+    return { requested: () => undefined };
+  }
+}
 
 export interface WhyOptions {
   json?: boolean;
@@ -81,11 +109,31 @@ export async function whyCommand(packageName: string, options: WhyOptions = {}):
       }
       shouldExit = true;
     } else {
-      const occurrences = findPathsGroupedByVersion(graph, packageName);
+      const detail = describePackageOccurrences(graph, packageName);
+      const manifest = readManifest(cwd);
+      const projectName = manifest.name || basename(cwd);
+      const requested = manifest.requested(packageName);
+      const occurrences = detail.map((occ) => ({
+        version: occ.version,
+        direct: occ.direct,
+        scope: occ.scope,
+        optional: occ.optional,
+        workspace: occ.workspace,
+        ...(occ.direct && requested ? { requested: requested.range, declaredIn: requested.field } : {}),
+        dependents: occ.dependents,
+        pathCount: occ.paths.length,
+        paths: occ.paths,
+      }));
 
       if (occurrences.length === 0) {
+        const suggestions = suggestPackageNames(graph, packageName);
+        const declared = manifest.requested(packageName);
         if (jsonMode) {
-          emitStructuredOutput({ package: packageName, occurrences: [] }, 'Why', options);
+          emitStructuredOutput(
+            { package: packageName, project: projectName, occurrences: [], suggestions, declaredButNotInstalled: !!declared },
+            'Why',
+            options
+          );
         } else {
           if (!graph.hierarchyComplete) {
             printWarning(
@@ -93,9 +141,31 @@ export async function whyCommand(packageName: string, options: WhyOptions = {}):
             );
           }
           printInfo(`"${packageName}" was not found in the dependency graph.`);
+          if (declared) {
+            printWarning(
+              `It is declared in package.json (${declared.field}: ${declared.range}) but missing from the ${graph.manager} lockfile/install — run your package manager's install.`
+            );
+          }
+          if (suggestions.length > 0) {
+            console.log(`  Did you mean: ${suggestions.join(', ')}?`);
+          }
         }
       } else if (jsonMode) {
-        emitStructuredOutput({ package: packageName, occurrences }, 'Why', options);
+        emitStructuredOutput(
+          {
+            package: packageName,
+            project: projectName,
+            summary: {
+              versions: occurrences.length,
+              direct: occurrences.some((o) => o.direct),
+              totalPaths: occurrences.reduce((sum, o) => sum + o.pathCount, 0),
+              duplicated: occurrences.length > 1,
+            },
+            occurrences,
+          },
+          'Why',
+          options
+        );
       } else {
         printHeader(`Why is "${packageName}" installed?`);
 
@@ -105,14 +175,40 @@ export async function whyCommand(packageName: string, options: WhyOptions = {}):
           );
         }
 
-        occurrences.forEach(occ => {
+        occurrences.forEach((occ) => {
           printSection(`${packageName}@${occ.version}`);
-          occ.paths.forEach((path, idx) => {
-            const connector = idx === occ.paths.length - 1 ? '└─' : '├─';
-            const line = ['your-app', ...path].join(' → ');
-            console.log(`  ${connector} ${line}`);
+          const facts: string[] = [];
+          if (occ.workspace) facts.push('workspace package');
+          facts.push(
+            occ.direct
+              ? `direct dependency${occ.requested ? ` (${occ.declaredIn}: ${occ.requested})` : ''}`
+              : 'transitive dependency'
+          );
+          if (occ.scope === 'development') facts.push('development only');
+          else if (occ.scope === 'production') facts.push('production');
+          if (occ.optional) facts.push('optional');
+          console.log(`  ${facts.join(' · ')}`);
+          if (occ.dependents.length > 0) {
+            console.log(`  Required by: ${occ.dependents.join(', ')}`);
+          }
+          const shown = occ.paths.slice(0, MAX_PATHS_SHOWN);
+          shown.forEach((path, idx) => {
+            const isLast = idx === shown.length - 1 && occ.paths.length <= MAX_PATHS_SHOWN;
+            console.log(`  ${isLast ? '└─' : '├─'} ${[projectName, ...path].join(' → ')}`);
           });
+          if (occ.paths.length > MAX_PATHS_SHOWN) {
+            console.log(`  └─ … and ${occ.paths.length - MAX_PATHS_SHOWN} more path(s) (use --json for all)`);
+          }
         });
+
+        if (occurrences.length > 1) {
+          printWarning(
+            `${occurrences.length} versions of "${packageName}" are installed — run \`rn-dep-scanner tree --duplicates\` to see where they diverge.`
+          );
+        }
+        console.log(
+          `\n  Next: \`why-not ${packageName} <version>\` to see what blocks an upgrade, or \`impact ${packageName} <version>\` for the blast radius.`
+        );
       }
     }
   } catch (error) {

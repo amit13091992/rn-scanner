@@ -42,7 +42,7 @@ test('diffCommand - reports added, removed, and changed packages between two pro
   const fromDir = makeTempDir();
   const toDir = makeTempDir();
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => ({ ok: true, json: async () => ({ results: [] }) })) as unknown as typeof fetch;
+  globalThis.fetch = (async (_url: unknown, init?: { body?: unknown }) => ({ ok: true, json: async () => ({ results: Array.from({ length: (JSON.parse(String(init?.body ?? '{"queries":[]}')) as { queries: unknown[] }).queries.length }, () => ({ vulns: [] })) }) })) as unknown as typeof fetch;
   try {
     writeProject(fromDir, { foo: '1.0.0', bar: '1.0.0' });
     writeProject(toDir, { foo: '2.0.0', baz: '1.0.0' });
@@ -65,7 +65,7 @@ test('diffCommand - no changes between identical directories reports empty diff'
   const fromDir = makeTempDir();
   const toDir = makeTempDir();
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => ({ ok: true, json: async () => ({ results: [] }) })) as unknown as typeof fetch;
+  globalThis.fetch = (async (_url: unknown, init?: { body?: unknown }) => ({ ok: true, json: async () => ({ results: Array.from({ length: (JSON.parse(String(init?.body ?? '{"queries":[]}')) as { queries: unknown[] }).queries.length }, () => ({ vulns: [] })) }) })) as unknown as typeof fetch;
   try {
     writeProject(fromDir, { foo: '1.0.0' });
     writeProject(toDir, { foo: '1.0.0' });
@@ -80,5 +80,24 @@ test('diffCommand - no changes between identical directories reports empty diff'
     globalThis.fetch = originalFetch;
     cleanup(fromDir);
     cleanup(toDir);
+  }
+});
+
+test('diffCommand - a missing project directory exits 1 instead of passing silently', async () => {
+  const fromDir = makeTempDir();
+  const originalExit = process.exit;
+  let exitCode: number | undefined;
+  // @ts-expect-error - stub process.exit for the duration of the test
+  process.exit = (code?: number) => {
+    exitCode = code;
+    throw new Error('__process_exit__');
+  };
+  try {
+    writeProject(fromDir, { foo: '1.0.0' });
+    await captureStdout(() => diffCommand({ from: fromDir, to: join(fromDir, 'does-not-exist'), json: true })).catch(() => undefined);
+    assert.equal(exitCode, 1);
+  } finally {
+    process.exit = originalExit;
+    cleanup(fromDir);
   }
 });

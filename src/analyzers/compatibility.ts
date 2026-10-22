@@ -1,7 +1,8 @@
 import { satisfies } from 'semver';
 import { getCompatibilityRules } from '../data/compatibility.js';
 import type { DependencyInfo, CompatibilityCheckResult, CompatibilityStatus, CompatibilityRule } from '../types/dependency.js';
-import { normalizeVersion } from '../utils/versionComparison.js';
+import { normalizeVersion, versionInRange } from '../utils/versionComparison.js';
+import { readInstalledDependencyManifest } from '../detectors/dependencyCompleteness.js';
 
 export function analyzeCompatibility(
   dep: DependencyInfo,
@@ -128,13 +129,48 @@ export function analyzeCompatibility(
   };
 }
 
+/**
+ * For a package with no curated rule, falls back to the `react-native` peer range the package
+ * itself declares in its installed manifest — real data from the package's author, so coverage
+ * isn't limited to this repo's hand-maintained rule list. A violated peer range is a warning,
+ * not an error: peer ranges often lag behind what a library actually supports. A bare `*`,
+ * a missing range, or an unreadable manifest stays `not-checked` (ADR-0004).
+ */
+function checkAgainstDeclaredPeer(
+  result: CompatibilityCheckResult,
+  cwd: string,
+  reactNativeVersion: string | null
+): CompatibilityCheckResult {
+  if (result.status !== 'not-checked' || !reactNativeVersion) return result;
+  const manifest = readInstalledDependencyManifest(cwd, result.package);
+  const range = manifest?.peerDependencies['react-native']?.trim();
+  if (!range || range === '*' || /:|^latest$/.test(range)) return result;
+  if (manifest?.peerDependenciesMeta['react-native']?.optional) return result;
+
+  const rn = normalizeVersion(reactNativeVersion);
+  const ok = versionInRange(reactNativeVersion, range);
+  return {
+    ...result,
+    status: ok ? 'compatible' : 'warning',
+    reason: undefined,
+    messages: [
+      ok
+        ? `✓ React Native ${rn} satisfies the peer range this package declares (react-native@${range})`
+        : `⚠ This package declares peer react-native@${range}, but React Native ${rn} is installed — peer ranges can lag, verify on your own build`,
+    ],
+    detectedFrom: 'peer-dependencies',
+  };
+}
+
 export function analyzeAllDependencies(
   dependencies: DependencyInfo[],
   reactNativeVersion: string | null,
   reactVersion: string | null,
-  customRules: CompatibilityRule[] = []
+  customRules: CompatibilityRule[] = [],
+  cwd?: string
 ): CompatibilityCheckResult[] {
-  return dependencies.map((dep) =>
-    analyzeCompatibility(dep, reactNativeVersion, reactVersion, customRules)
-  );
+  return dependencies.map((dep) => {
+    const result = analyzeCompatibility(dep, reactNativeVersion, reactVersion, customRules);
+    return cwd ? checkAgainstDeclaredPeer(result, cwd, reactNativeVersion) : result;
+  });
 }

@@ -121,9 +121,11 @@ export async function diffCommand(options: DiffOptions): Promise<void> {
     }
     process.exit(1);
     return;
-  }
-
-  if (graphMissing) {
-    process.exit(1);
+  } finally {
+    // The early `return` after a missing graph skips anything placed after the try block, which
+    // is how a missing project used to exit 0 and pass CI.
+    if (graphMissing) {
+      process.exit(1);
+    }
   }
 }

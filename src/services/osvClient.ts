@@ -7,6 +7,11 @@ const OSV_BATCH_URL = 'https://api.osv.dev/v1/querybatch';
 const OSV_VULN_URL = 'https://api.osv.dev/v1/vulns/';
 const TIMEOUT_MS = 8000;
 const DETAIL_CONCURRENCY = 10;
+/** OSV rejects a querybatch with more than 1000 queries (HTTP 400), which would fail the whole
+ *  scan of any large monorepo graph — stay well under it. */
+const BATCH_SIZE = 500;
+const MAX_PAGES_PER_QUERY = 10;
+const MAX_ATTEMPTS = 3;
 
 interface OsvBatchQuery {
   package: { name: string; ecosystem: 'npm' };
@@ -15,6 +20,8 @@ interface OsvBatchQuery {
 
 interface OsvBatchResultEntry {
   vulns?: { id: string }[];
+  /** Present when OSV truncated this query's result list; re-query with it as `page_token`. */
+  next_page_token?: string;
 }
 
 interface OsvBatchResponse {
@@ -39,14 +46,57 @@ interface OsvVulnRecord {
   database_specific?: { severity?: string };
 }
 
+function retryDelayMs(attempt: number): number {
+  const base = Number.parseInt(process.env.RN_DEP_SCANNER_RETRY_DELAY_MS ?? '', 10);
+  return (Number.isFinite(base) && base >= 0 ? base : 300) * attempt;
+}
+
+/** One attempt per call to `fetchWithTimeout`; transient failures (timeout, 429, 5xx, a body
+ *  that isn't JSON) are retried with a short backoff so a single hiccup doesn't silently lose
+ *  findings. Offline mode never retries. */
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> {
-  const response = await fetchWithTimeout(url, init, networkTimeoutMs(TIMEOUT_MS));
-  if (!response) return null;
-  try {
-    return (await response.json()) as T;
-  } catch {
-    return null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const response = await fetchWithTimeout(url, init, networkTimeoutMs(TIMEOUT_MS));
+    if (response) {
+      try {
+        return (await response.json()) as T;
+      } catch {
+        // fall through to retry
+      }
+    }
+    if (isOffline() || attempt === MAX_ATTEMPTS) break;
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt)));
   }
+  return null;
+}
+
+/** Runs one chunk of queries, following `next_page_token` per query so a package with many
+ *  advisories isn't cut off at the first page. Returns null if any request ultimately fails. */
+async function queryChunk(queries: OsvBatchQuery[]): Promise<string[][] | null> {
+  const first = await fetchJson<OsvBatchResponse>(OSV_BATCH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ queries }),
+  });
+  if (!first?.results || first.results.length !== queries.length) return null;
+
+  const ids: string[][] = first.results.map((entry) => (entry.vulns ?? []).map((v) => v.id));
+
+  for (let i = 0; i < queries.length; i++) {
+    let token = first.results[i]?.next_page_token;
+    for (let page = 0; token && page < MAX_PAGES_PER_QUERY; page++) {
+      const next = await fetchJson<OsvBatchResponse>(OSV_BATCH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queries: [{ ...queries[i], page_token: token }] }),
+      });
+      const entry = next?.results?.[0];
+      if (!entry) return null;
+      ids[i]!.push(...(entry.vulns ?? []).map((v) => v.id));
+      token = entry.next_page_token;
+    }
+  }
+  return ids;
 }
 
 /**
@@ -154,22 +204,20 @@ export async function queryVulnerabilities(
     version: p.version,
   }));
 
-  const batchResponse = await fetchJson<OsvBatchResponse>(OSV_BATCH_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ queries }),
-  });
-
-  if (!batchResponse) {
-    return {
-      scanned: false,
-      error: isOffline() ? 'Skipped: offline mode (--offline)' : 'Could not reach OSV.dev (network unavailable, timed out or request failed) — raise --timeout <ms> or retry',
-      results: [],
-    };
+  const idsByPackageIndex: string[][] = [];
+  for (let start = 0; start < queries.length; start += BATCH_SIZE) {
+    const chunkIds = await queryChunk(queries.slice(start, start + BATCH_SIZE));
+    if (!chunkIds) {
+      // Fail closed: a partial answer reported as `scanned: true` reads as "nothing else found".
+      return {
+        scanned: false,
+        error: isOffline() ? 'Skipped: offline mode (--offline)' : 'Could not reach OSV.dev (network unavailable, timed out or request failed) — raise --timeout <ms> or retry',
+        results: [],
+      };
+    }
+    idsByPackageIndex.push(...chunkIds);
   }
 
-  const batchResults = batchResponse.results ?? [];
-  const idsByPackageIndex: string[][] = batchResults.map((entry) => (entry.vulns ?? []).map((v) => v.id));
   const allIds = new Set(idsByPackageIndex.flat());
 
   const detailsById = new Map<string, OsvVulnRecord>();
@@ -191,10 +239,19 @@ export async function queryVulnerabilities(
   const results: RawPackageVulnerabilityResult[] = [];
   queryable.forEach((pkg, index) => {
     const ids = idsByPackageIndex[index] ?? [];
-    const vulnerabilities = ids
-      .map((id) => detailsById.get(id))
-      .filter((record): record is OsvVulnRecord => !!record)
-      .map((record) => parseOsvRecord(record, pkg.name, pkg.version));
+    // A detail lookup that still fails after retries must not erase the finding: OSV told us
+    // this version is affected, so keep it with what is known (id + link) and severity unknown.
+    const vulnerabilities = [...new Set(ids)].map((id) => {
+      const record = detailsById.get(id);
+      return record
+        ? parseOsvRecord(record, pkg.name, pkg.version)
+        : {
+            id,
+            summary: 'Advisory details could not be fetched from OSV.dev — see the link',
+            severity: 'unknown' as const,
+            references: [`https://osv.dev/vulnerability/${id}`],
+          };
+    });
 
     if (vulnerabilities.length > 0) {
       results.push({ package: pkg.name, version: pkg.version, vulnerabilities });

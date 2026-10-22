@@ -15,6 +15,7 @@ from one CLI.
 - [Upgrade planning](#upgrade-planning)
 - [Code-level analysis](#code-level-analysis)
 - [Reporting & CI](#reporting--ci)
+- [Global options, network behaviour & exit codes](#global-options-network-behaviour--exit-codes)
 - [Config file (`.rn-dep-scanner.json`)](#config-file-rn-dep-scannerjson)
 - [Output formats (`--json` / `--html`)](#output-formats---json----html)
 - [Security notes](#security-notes)
@@ -51,7 +52,7 @@ on `PATH`.
 cd your-react-native-project
 npx rn-dep-scanner              # same as `npx rn-dep-scanner check` — the default command
 npx rn-dep-scanner doctor       # is your native toolchain (JDK/AGP/Xcode/...) ready to build?
-npx rn-dep-scanner upgrade --to 0.81.0   # what would upgrading to RN 0.81 break?
+npx rn-dep-scanner upgrade --to 0.88.0   # what would upgrading to RN 0.88 break?
 npx rn-dep-scanner upgrade --latest      # ...or just assess against whatever RN's latest is right now
 ```
 
@@ -105,22 +106,28 @@ workspace).
 ### `check` (default command)
 
 ```bash
-rn-dep-scanner [check] [--json] [--html [path]] [--strict] [--cwd <path>] [--no-security] [--profile] [--all-workspaces]
+rn-dep-scanner [check] [--json] [--html [path]] [--strict] [--cwd <path>] [--no-security] [--verbose] [--profile] [--all-workspaces]
 ```
 
 The main scan. Reads `package.json` + your lockfile and reports, against the detected
 React/React Native versions:
 
 - version mismatches, duplicate dependencies, peer-dependency conflicts
-- deprecated packages and breaking changes (with a `stale` flag for changes far enough in the
-  past they're very unlikely to still be a pending action item)
+- per-package React Native compatibility: curated rules first (`data/compatibility.ts`, including
+  per-minor Reanimated/Worklets windows), then — for a package with no curated rule — the
+  `react-native` peer range the package itself declares in its installed manifest. A violated
+  peer range is a warning (peer ranges often lag), a bare `*` stays "not checked"
+- deprecated packages and breaking changes — every currently-applicable entry per package (e.g.
+  both the RN 0.87 and 0.88 notes on 0.88), with a `stale` flag for changes far enough in the
+  past they're very unlikely to still be a pending action item; an older major line's entry is
+  superseded by the newest applicable major
 - New Architecture (Fabric/TurboModules) compatibility per installed package
-- Expo SDK ↔ RN version pinning and per-package Expo Go support (Expo projects only)
+- Expo SDK ↔ RN version pinning (through SDK 58 / RN 0.88), SDK 58 breaking changes and release-build advisories, and per-package Expo Go support (Expo projects only)
 - whether each installed package's own sub-dependencies are actually present and satisfied
 - known vulnerabilities (OSV.dev) across your **full transitive dependency tree**, not just
   `package.json`'s direct entries — on by default, pass `--no-security` to skip (no network call)
 
-Reports a 0–100 health score. `--strict` exits 1 on any error-level finding (including a
+Reports a 0–100 health score — or "insufficient data" (`healthScore: null` in `--json`) when fewer than half the dependencies have compatibility data, rather than a misleading number. `--verbose` lists every security advisory instead of one grouped block per package. `--strict` exits 1 on any error-level finding (including a
 critical/high vulnerability, or an unsupported New Architecture package once React Native's
 legacy bridge is removed). `--profile` prints a per-step timing breakdown of the scan itself.
 `--all-workspaces` checks every workspace package in the monorepo and aggregates the results.
@@ -138,7 +145,11 @@ gaps —
 - **Android**: JDK, Kotlin, AGP, Gradle, compileSdk/targetSdk/minSdk, NDK, Build Tools — read
   from `build.gradle(.kts)`, `settings.gradle(.kts)`, and a Gradle version catalog
   (`gradle/libs.versions.toml`) if present, compared against the detected RN version's baseline
-- **iOS**: Xcode, deployment target, CocoaPods, Ruby, Swift
+- **iOS**: Xcode, deployment target, CocoaPods, Ruby, Swift — and, for RN 0.88+, whether the
+  UIScene lifecycle (`UIApplicationSceneManifest` in `Info.plist`) is set up, which Apple requires
+  for apps built with the iOS 27 SDK / Xcode 27
+- **Node.js**: the running Node against the RN version's baseline; for RN 0.88+ also warns on
+  odd-numbered majors and Node 24.0–24.2, which fall outside RN's supported `engines` range
 - **Android 16KB page-size alignment**: every installed dependency's prebuilt `.so` libraries
   (both loose `jniLibs/<abi>/` files and ones packaged inside an `.aar`/`.jar`), checked against
   the alignment Android 15+ devices require
@@ -166,7 +177,7 @@ npx rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>
 npx rn-dep-scanner upgrade --latest [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
-One of `--to <version>` or `--latest` is required. `--latest` resolves the target version from
+Give `--to <version>` or `--latest` (with neither, `--latest` is assumed). `--latest` resolves the target version from
 npm's `react-native` `latest` dist-tag instead of you having to look it up yourself. Assesses
 readiness to upgrade React Native to the target version by combining:
 
@@ -180,7 +191,8 @@ readiness to upgrade React Native to the target version by combining:
 
 Produces a `low`/`medium`/`high` `risk` score and a `READY`/`WARN`/`BLOCKED` `verdict`, plus a
 separate `envVerdict` covering just the native-toolchain checks (useful when you only care
-whether the machine itself can build, independent of JS migration work). `--all-workspaces`
+whether the machine itself can build, independent of JS migration work). If you're already on the target version it says so and
+reports a health check of the current version. `--all-workspaces`
 assesses every workspace package in the monorepo and aggregates the results.
 
 When the current and target versions are more than one RN minor apart, the result also includes
@@ -210,8 +222,16 @@ RN versions' Node/Android/iOS baselines with no project scan needed. No `--cwd`.
 npx rn-dep-scanner why <package> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
-Traces every install path and resolved version a package appears at in your dependency tree.
-`--all-workspaces` traces it across every workspace package in the monorepo.
+Explains why a package is installed. For each resolved version it shows whether it is a **direct**
+dependency (with the range and `package.json` field that declares it) or **transitive**, whether
+it is development-only/production/optional when the lockfile says so, which packages **require**
+it, and every install path (rooted at your real project name; the first 10 per version, the rest
+counted). It warns when several versions are installed (pointing at `tree --duplicates`) and
+suggests `why-not`/`impact` as next steps. A name that matches nothing gets "did you mean …"
+suggestions, plus a note if the package is declared in `package.json` but missing from the
+lockfile. `--json` adds `project`, `summary` and per-version `direct`/`scope`/`requested`/
+`dependents`/`pathCount` next to the existing `paths`. `--all-workspaces` traces it across every
+workspace package in the monorepo.
 
 ### `tree [package]`
 
@@ -263,12 +283,18 @@ literal is found.
 ### `security`
 
 ```bash
-npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (the same data `check`
-reports by default), with the full dependency path to each vulnerable package. Exits 1 on any
-critical/high finding — useful in CI without running the full `check`. Respects
+reports by default), with the full dependency path to each vulnerable package. Advisories are
+grouped per package with one "upgrade to" version; `--verbose` lists every advisory, `--summary`
+prints counts plus one line per package. Exits 1 on a finding at or above `--fail-on
+<critical|high|moderate|low|none>` (default `high`) — useful in CI without running the full
+`check`. The OSV client batches large graphs (500 packages per request, OSV rejects >1000),
+follows result paging, retries transient failures, and keeps a finding (id + link, unknown
+severity) if its detail lookup still fails rather than silently dropping it; if OSV can't be
+reached at all it reports `scanned: false` instead of "no vulnerabilities". Respects
 `ignoreVulnerabilities` in `.rn-dep-scanner.json`. `--all-workspaces` scans every workspace
 package in the monorepo containing `--cwd` and aggregates the results into one report (`--json`
 gives a `workspaces[]` array plus a combined `summary`), instead of just the one package
@@ -277,10 +303,10 @@ gives a `workspaces[]` array plus a combined `summary`), instead of just the one
 ### `licenses`
 
 ```bash
-npx rn-dep-scanner licenses [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner licenses [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose]
 ```
 
-Reports each package's declared license across the full transitive tree, optionally flagging a
+Reports each package's declared license across the full transitive tree (counts per license, with copyleft and unknown licenses called out; `--verbose` lists every package), optionally flagging a
 `licenseDenylist` from `.rn-dep-scanner.json` (exits 1 on a match). Reads only each package's
 *hoisted* `node_modules/<name>/package.json` — a version that lost the hoist to a conflicting
 sibling won't have its license read; see [Known limitations](#known-limitations).
@@ -320,16 +346,16 @@ npx rn-dep-scanner diff --from <dir> --to <dir> [--json] [--html [path]]
 
 `--from`/`--to` are required project directories (not lockfile paths). Compares their dependency
 graphs for added/removed/changed packages, then runs a security scan against just what
-changed — catches a PR that quietly introduces a vulnerable package. No `--cwd` (the two
+changed — catches a PR that quietly introduces a vulnerable package. Exits 1 if either directory has no project/lockfile. No `--cwd` (the two
 directories you pass are the inputs).
 
 ### `policy`
 
 ```bash
-npx rn-dep-scanner policy [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-dep-scanner policy [--init] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
-Evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and
+`policy --init` writes a starter `.rn-dep-scanner.json` (never overwrites an existing one). Otherwise evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and
 `maxVulnerabilitySeverity` fields (see [Config](#config-file-rn-dep-scannerjson)) by reusing the
 same analyzers `licenses`/`security` use. Exits 1 on any violation. `--all-workspaces` evaluates
 every workspace package in the monorepo, same aggregation behavior as `security` above — each
@@ -344,13 +370,17 @@ npx rn-dep-scanner baseline [--json] [--html [path]] [--cwd <path>]   # report o
 ```
 
 Useful for adopting the tool on a large existing project without a wall of pre-existing issues
-blocking CI on day one. Scoped to security vulnerabilities only (not every `check` issue
+blocking CI on day one. The check run reports how many baselined findings are still present, how
+many have been resolved since (so you know when to re-run `--create` to prune), and each new
+finding grouped by package with its severity, fix version and dependency path. It fails closed:
+if the security scan can't run (e.g. offline), `--create` writes nothing and a check exits 1
+rather than reporting "no new vulnerabilities". An unreadable baseline file (truncated, merge-conflict markers) is reported clearly on a check, and `--create` replaces it with a warning; the file is written atomically. Scoped to security vulnerabilities only (not every `check` issue
 category — see [Known limitations](#known-limitations)).
 
 `baseline --create` writes `.rn-dep-scanner-baseline.json` to the project root — a **generated
 snapshot file**, distinct from the `.rn-dep-scanner.json` config file: you don't hand-write or
 edit it, and there's no policy to configure inside it. Re-running `--create` overwrites it with
-current findings. Decide per-project whether to commit it: commit it if "new findings since this
+current findings (and reports how many were added/dropped versus the previous snapshot). Decide per-project whether to commit it: commit it if "new findings since this
 snapshot" should be consistent for every contributor/CI run; leave it gitignored if each
 machine/branch should track its own baseline independently.
 
@@ -374,7 +404,8 @@ protocol reference) is reported as unknown, never guessed true or false.
 npx rn-dep-scanner impact <package> <version> [--json] [--html [path]] [--cwd <path>]
 ```
 
-Goes further than `why-not`: breaking changes at that target version, the same peer/version
+Goes further than `why-not`: breaking changes that apply between your installed version and the
+target (ones already in effect on your current version are shown as informational only), the same peer/version
 conflicts, and which other installed packages depend on this one (worth re-testing after
 upgrading), plus plain-language recommended actions.
 
@@ -402,8 +433,11 @@ npx rn-dep-scanner legacy-apis [--json] [--html [path]] [--cwd <path>]
 Detects source imports of core React Native APIs that were removed and split into community
 packages (`WebView`, `AsyncStorage`, `Clipboard`, `NetInfo`, `ListView`, and more — see
 `src/data/legacyApis.ts`), reporting each affected file with its suggested replacement package.
-Import-based detection only — a deprecated prop/method on an API that otherwise still exists
-isn't covered.
+Also flags React Native 0.87/0.88 removals and deprecations: `InteractionManager`, `Touchable`,
+`react-native/Libraries/*` deep imports, the `InitializeCore` import, `experimental_background*`
+style keys, and the removed `Modal` `animated` prop (a heuristic JSX match). Beyond those pattern
+entries, detection is import-based — a deprecated prop/method on an API that otherwise still
+exists isn't covered.
 
 ### `a11y`
 
@@ -495,6 +529,38 @@ and a cycle that fails (e.g. a network error during the security scan) is report
 on the next cycle instead of ending the watch.
 
 ---
+
+## Global options, network behaviour & exit codes
+
+```bash
+npx rn-dep-scanner [--offline] [--timeout <ms>] <command> ...
+npx rn-dep-scanner --version | --help
+```
+
+- **`--offline`** — no OSV.dev or npm-registry calls (also `RN_DEP_SCANNER_OFFLINE=1`);
+  network-backed sections report as skipped. **`--timeout <ms>`** — per-request timeout, default
+  8000 (also `RN_DEP_SCANNER_TIMEOUT_MS`). `outdated` warns when registry lookups failed instead of
+  silently reporting fewer updates; OSV requests retry transient failures before giving up.
+- **Exit codes.** Every command exits 1 on a fatal error (unreadable project, bad arguments).
+  Beyond that:
+
+| Command | Exits 1 when |
+|---|---|
+| `check` | `--strict` and there is an error-level finding (critical/high vulnerability, unsupported New Architecture package, leaked AI key, compatibility error) |
+| `security` | a finding at or above `--fail-on` (default `high`) |
+| `licenses` | a package matches `licenseDenylist` |
+| `policy` | any `bannedPackages` / `licenseDenylist` / `maxVulnerabilitySeverity` violation |
+| `baseline` | a new finding since the snapshot, no/unreadable baseline file, or the security scan couldn't run |
+| `a11y` | `--strict` and a high-confidence missing label |
+| `diff`, `why`, `tree`, `graph` | the project/lockfile can't be found |
+| `doctor`, `upgrade` | only on a fatal error — a `BLOCKED` verdict is reported in the output/`--json` (`verdict`, `envVerdict`), not via the exit code |
+
+With `--all-workspaces`, a non-zero exit in any workspace package makes the aggregated run exit 1.
+
+Other behaviour worth knowing:
+
+- **`unused`:** packages used via `package.json` `main`, Expo config plugins, `package.json` scripts, config files, or as a peer of another dependency are listed as implicitly used instead of unused.
+- **`upgrade`:** risk accounts for how many React Native minors the jump spans and for installed packages whose rules fail at the target version, lists the reasons, and reports an Android/iOS toolchain as "not verified" when there is no `android/` or `ios/` directory.
 
 ## Config file (`.rn-dep-scanner.json`)
 
@@ -611,13 +677,3 @@ npm run test            # run the test suite
 ## License
 
 MIT
-
-### Network behaviour, security output and exit codes
-
-- **Offline / timeouts:** every command accepts `--offline` (no OSV.dev or npm registry calls; network-backed sections are reported as skipped) and `--timeout <ms>` (per-request timeout, default 8000; also `RN_DEP_SCANNER_TIMEOUT_MS`). `outdated` warns when registry lookups failed instead of silently reporting fewer updates.
-- **`security`:** advisories are grouped per package with a single "upgrade to" version and the shortest dependency path. `--verbose` lists every advisory, `--summary` prints counts plus one line per package, and `--fail-on <critical|high|moderate|low|none>` sets the exit-1 threshold (default `high`). `check` uses the same grouped format.
-- **`licenses`:** prints counts per license and calls out copyleft and unknown licenses; `--verbose` lists every package.
-- **`policy --init`:** writes a starter `.rn-dep-scanner.json` (never overwrites an existing one).
-- **`upgrade`:** with no `--to`/`--latest` it assumes `--latest`. Risk now accounts for how many React Native minors the jump spans and for installed packages whose rules fail at the target version, lists the reasons, and reports an Android/iOS toolchain as "not verified" when there is no `android/` or `ios/` directory.
-- **`unused`:** packages used via `package.json` `main`, Expo config plugins, `package.json` scripts, config files, or as a peer of another dependency are listed as implicitly used instead of unused.
-- **Health score:** shows "insufficient data" (and `healthScore: null` in `--json`) when fewer than half the dependencies have compatibility rules.

@@ -66,3 +66,23 @@ test('whyNotCommand - reports installable when the target version satisfies ever
     cleanup(dir);
   }
 });
+
+test('whyNot - a "*" peer range is satisfied by any version, not reported as unknown', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { analyzeWhyNot } = await import('../src/analyzers/whyNot.js');
+  const dir = mkdtempSync(join(tmpdir(), 'whynot-star-'));
+  try {
+    mkdirSync(join(dir, 'node_modules', 'lib'), { recursive: true });
+    writeFileSync(join(dir, 'node_modules', 'lib', 'package.json'), JSON.stringify({ name: 'lib', version: '1.0.0', peerDependencies: { react: '*' } }));
+    const deps = [
+      { name: 'react', requestedVersion: '19.0.0', resolvedVersion: '19.0.0', type: 'dependency' as const },
+      { name: 'lib', requestedVersion: '1.0.0', resolvedVersion: '1.0.0', type: 'dependency' as const },
+    ];
+    const result = analyzeWhyNot(dir, deps, 'react', '18.0.0');
+    assert.ok(!JSON.stringify(result).includes('not a resolvable semver'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

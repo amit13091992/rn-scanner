@@ -3,7 +3,7 @@ import { versionInRange } from '../utils/versionComparison.js';
 import { readInstalledDependencyManifest } from '../detectors/dependencyCompleteness.js';
 
 /** A version-range spec that isn't resolvable semver (workspace/npm/file/git/link protocol
- *  references, or a bare "*"/"latest") — evaluating it against a target version can't produce
+ *  references, or or a bare "latest") — evaluating it against a target version can't produce
  *  a trustworthy true/false, so callers must report "unknown", never guess. */
 function isUnresolvableRange(range: string): boolean {
   return /:|^\*$|^latest$/.test(range);
@@ -27,6 +27,8 @@ export interface WhyNotResult {
 }
 
 function evaluate(range: string, targetVersion: string): boolean | null {
+  // "*" is valid semver that every version satisfies — not an unknown, simply no constraint.
+  if (range.trim() === '*') return true;
   if (isUnresolvableRange(range)) return null;
   return versionInRange(targetVersion, range);
 }

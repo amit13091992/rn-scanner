@@ -38,7 +38,7 @@ import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
 
 function installCommand(manager: string, packageName: string, range: string): string {
-  const spec = `${packageName}@${range}`;
+  const spec = range.trim() === '*' ? packageName : `${packageName}@${range}`;
   switch (manager) {
     case 'yarn':
       return `yarn add ${spec}`;
@@ -180,7 +180,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       }
     }
     const compatibilityResults = await profiler.time('analyzeAllDependencies', () =>
-      analyzeAllDependencies(dependencies, rnInfo.version, rnInfo.react, config.customCompatibilityRules ?? [])
+      analyzeAllDependencies(dependencies, rnInfo.version, rnInfo.react, config.customCompatibilityRules ?? [], cwd)
     );
     const breakingChangesResults = await profiler.time('analyzeBreakingChanges', () =>
       analyzeBreakingChanges(dependencies)
@@ -239,6 +239,9 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const newArchUnsupported = newArchIssues.filter(i => i.support === 'unsupported').length;
 
     if (!jsonMode) {
+      printInfo(
+        `${compatibilityResults.length} dependencies analyzed: ${compatible} compatible, ${warnings} warning(s), ${errors} error(s), ${notChecked} without compatibility rules`
+      );
       if (versionMismatches.length > 0) {
         printSection('Version Mismatches');
         versionMismatches.forEach(mismatch => {
@@ -413,7 +416,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         detectedBreakingChanges.forEach((change) => {
           const icon = change.issue.stale
             ? 'ℹ️  HISTORICAL'
-            : change.issue.severity === 'critical' ? '🔴 CRITICAL' : '🟠 HIGH';
+            : change.issue.severity === 'critical' ? '🔴 CRITICAL' : change.issue.severity === 'medium' ? '🟡 MEDIUM' : '🟠 HIGH';
           console.log(`\n${icon}  ${change.issue.package}@${change.issue.version}`);
           console.log(`  ├─ Introduced in: ${change.issue.introducedInVersion}`);
           console.log('  ├─ Changes:');
@@ -427,7 +430,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
             console.log('  ├─ Status: Already part of the installed version — likely already migrated');
             console.log('  └─ Action: For awareness only; verify your code accounts for this if not already');
           } else {
-            console.log('  ├─ Severity: ' + (change.issue.severity === 'critical' ? 'CRITICAL - Must be addressed' : 'HIGH - Should be addressed soon'));
+            console.log('  ├─ Severity: ' + (change.issue.severity === 'critical' ? 'CRITICAL - Must be addressed' : change.issue.severity === 'medium' ? 'MEDIUM - Worth reviewing' : 'HIGH - Should be addressed soon'));
             console.log('  └─ Action: Review migration guide and update your code accordingly');
           }
         });

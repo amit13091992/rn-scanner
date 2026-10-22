@@ -104,7 +104,7 @@ export function assessUpgradeReadiness(
   const nodeErrors = nodeIssues.filter((i) => i.status === 'error').length;
 
   const minorsSpanned = minorsBetween(fromVersion, toVersion);
-  const compatAtTarget = analyzeAllDependencies(dependencies, toVersion, null)
+  const compatAtTarget = analyzeAllDependencies(dependencies, toVersion, null, [], cwd)
     .filter((r) => r.status === 'error' || r.status === 'warning')
     .map((r) => ({ package: r.package, version: r.version, status: r.status as 'error' | 'warning', messages: r.messages }));
   const compatErrors = compatAtTarget.filter((c) => c.status === 'error').length;

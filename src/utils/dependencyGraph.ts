@@ -1102,6 +1102,94 @@ export function findPathsGroupedByVersion(graph: DependencyGraph, packageName: s
   return Array.from(byVersion.entries()).map(([version, paths]) => ({ version, paths }));
 }
 
+export interface PackageOccurrenceDetail extends PackageOccurrence {
+  /** Reachable via a root-to-node path of length 1 (declared in the project's own package.json). */
+  direct: boolean;
+  /** 'development' when every install of this version is reachable only through devDependencies,
+   *  'production' when that is known, undefined when the lockfile can't tell (ADR-0004). */
+  scope?: 'development' | 'production';
+  optional: boolean;
+  workspace: boolean;
+  /** Distinct immediate parents (package names) that pull this version in; excludes the project itself. */
+  dependents: string[];
+}
+
+/**
+ * Like `findPathsGroupedByVersion`, plus per-version context a human needs to act on the answer:
+ * whether it is declared directly, which packages require it, and whether it is dev-only.
+ */
+export function describePackageOccurrences(graph: DependencyGraph, packageName: string): PackageOccurrenceDetail[] {
+  const byVersion = new Map<
+    string,
+    { paths: string[][]; devFlags: Array<boolean | undefined>; optional: boolean; workspace: boolean }
+  >();
+
+  walkAllPaths(graph, (node, _nodeId, path) => {
+    if (node.name !== packageName) return;
+    const version = node.version || 'unknown';
+    let entry = byVersion.get(version);
+    if (!entry) {
+      entry = { paths: [], devFlags: [], optional: false, workspace: false };
+      byVersion.set(version, entry);
+    }
+    entry.paths.push(path);
+    entry.devFlags.push(node.dev);
+    if (node.optional) entry.optional = true;
+    if (node.workspace) entry.workspace = true;
+  });
+
+  return Array.from(byVersion.entries()).map(([version, entry]) => {
+    const direct = entry.paths.some((path) => path.length === 1);
+    const allDev = entry.devFlags.length > 0 && entry.devFlags.every((flag) => flag === true);
+    const scope: PackageOccurrenceDetail['scope'] = allDev
+      ? 'development'
+      : graph.manager === 'npm' || direct
+        ? 'production'
+        : undefined;
+    const dependents = [
+      ...new Set(entry.paths.filter((path) => path.length > 1).map((path) => path[path.length - 2]!)),
+    ].sort();
+    return { version, paths: entry.paths, direct, scope, optional: entry.optional, workspace: entry.workspace, dependents };
+  });
+}
+
+/** Closest package names in the graph to a query that matched nothing — substring hits first, then edit distance <= 2. */
+export function suggestPackageNames(graph: DependencyGraph, query: string, limit = 5): string[] {
+  const needle = query.toLowerCase();
+  const names = new Set<string>();
+  graph.nodes.forEach((node, id) => {
+    if (id !== graph.root && node.name) names.add(node.name);
+  });
+
+  const distance = (a: string, b: string): number => {
+    const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      let prev = row[0]!;
+      row[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const tmp = row[j]!;
+        row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+        prev = tmp;
+      }
+    }
+    return row[b.length]!;
+  };
+
+  const scored: Array<{ name: string; rank: number }> = [];
+  for (const name of names) {
+    const lower = name.toLowerCase();
+    if (lower.includes(needle) || needle.includes(lower)) scored.push({ name, rank: 0 });
+    else {
+      const d = distance(lower, needle);
+      if (d <= 2) scored.push({ name, rank: d });
+    }
+  }
+  return scored
+    .sort((a, b) => a.rank - b.rank || a.name.length - b.name.length || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map((entry) => entry.name);
+}
+
 export interface GraphPackageVersion {
   name: string;
   version: string;

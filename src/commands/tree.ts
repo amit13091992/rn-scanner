@@ -96,7 +96,7 @@ function printSubtree(
   const connector = isLast ? '└─ ' : '├─ ';
   const alreadyExpanded = !isRoot && expanded.has(nodeId);
   const label = isRoot
-    ? 'your-app'
+    ? node.name || 'your-app'
     : `${node.name}@${node.version}${alreadyExpanded ? ' (expanded above)' : ''}`;
 
   if (isRoot) {

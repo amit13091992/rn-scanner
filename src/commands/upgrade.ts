@@ -176,6 +176,9 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
     }
 
     printHeader(`Upgrade Readiness: ${currentVersion ?? 'unknown'} → ${resolvedToVersion}`);
+    if (currentVersion && currentVersion === resolvedToVersion) {
+      printInfo(`Already on ${resolvedToVersion}${options.latest ? ', the latest published react-native' : ''} — nothing to upgrade; the report below is a health check of the current version.`);
+    }
 
     const riskLabel = risk === 'high' ? '🔴 HIGH' : risk === 'medium' ? '🟠 MEDIUM' : '✓ LOW';
     const verdictLabel = verdict === 'BLOCKED' ? '🔴 BLOCKED' : verdict === 'WARN' ? '🟠 WARN' : '✓ READY';
@@ -183,7 +186,7 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
     riskReasons.forEach((reason) => console.log(`  • ${reason}`));
     const unverifiedToolchains = (['android', 'ios'] as const).filter((k) => !environmentVerified[k]);
     if (unverifiedToolchains.length > 0) {
-      console.log(`  ℹ Verdict is based on JavaScript-level data only — the ${unverifiedToolchains.map((k) => (k === 'ios' ? 'iOS' : 'Android')).join(' and ')} toolchain could not be checked (no native folder). Run \`npx expo prebuild\` and re-run for a native check.`);
+      console.log(`  ℹ Verdict is based on JavaScript-level data only — the ${unverifiedToolchains.map((k) => (k === 'ios' ? 'iOS' : 'Android')).join(' and ')} toolchain could not be checked (no android/ios folder found). Restore or generate it (\`npx expo prebuild\` for Expo projects) and re-run for a native check.`);
     }
     if (outdatedMajors > 0) {
       console.log(`  • ${outdatedMajors} dependenc${outdatedMajors === 1 ? 'y has' : 'ies have'} a newer major version available (run \`npx rn-dep-scanner outdated\`)`);

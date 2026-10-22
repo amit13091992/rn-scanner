@@ -34,9 +34,9 @@ test('analyzeBreakingChanges - a change is not stale when simulating a target ve
 
   const results = analyzeBreakingChanges(dependenciesAtTarget, currentDependencies);
 
-  assert.equal(results[0]?.detected, true);
-  assert.equal(results[0]?.issue?.introducedInVersion, '0.73.0');
-  assert.equal(results[0]?.issue?.stale, false);
+  const at073 = results.find((r) => r.issue?.introducedInVersion === '0.73.0');
+  assert.equal(at073?.detected, true);
+  assert.equal(at073?.issue?.stale, false);
 });
 
 test('analyzeBreakingChanges - defaults to plain check semantics when no reference list is given', () => {
@@ -49,4 +49,22 @@ test('detectBreakingChanges - no data for unknown package', () => {
   const result = detectBreakingChanges(dep('some-unlisted-package', '1.0.0'));
   assert.equal(result.detected, false);
   assert.equal(result.hasData, false);
+});
+
+test('analyzeBreakingChanges - react-native 0.88 reports the 0.87 and 0.88 notes instead of being hidden by older entries', () => {
+  const introduced = analyzeBreakingChanges([dep('react-native', '0.88.0')]).map((r) => r.issue?.introducedInVersion);
+  assert.deepEqual(introduced, ['0.88.0', '0.87.0']);
+});
+
+test('analyzeBreakingChanges - a package with only stale matches yields one historical note, not one per old entry', () => {
+  const results = analyzeBreakingChanges([dep('react-native', '0.99.0')]);
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.issue?.stale, true);
+});
+
+test('analyzeBreakingChanges - an older major line\'s entry is superseded by the newest applicable major', () => {
+  const nav = analyzeBreakingChanges([dep('@react-navigation/native', '7.5.1')]).map((r) => r.issue?.introducedInVersion);
+  assert.deepEqual(nav, ['7.0.0']);
+  const reanimated = analyzeBreakingChanges([dep('react-native-reanimated', '4.7.1')]).map((r) => r.issue?.introducedInVersion);
+  assert.deepEqual(reanimated, ['4.0.0']);
 });

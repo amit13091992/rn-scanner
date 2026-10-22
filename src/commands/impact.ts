@@ -36,8 +36,8 @@ export async function impactCommand(packageName: string, targetVersion: string, 
     if (result.breakingChange.detected && result.breakingChange.issue) {
       printSection('Breaking Changes');
       const issue = result.breakingChange.issue;
-      if (issue.stale) {
-        printInfo(`${packageName}@${issue.introducedInVersion} introduced changes, but this is likely already part of your current version — informational only.`);
+      if (issue.stale || issue.relevance === 'historical') {
+        printInfo(`${packageName}@${issue.introducedInVersion} introduced changes, but this is already part of your current version — informational only.`);
       } else {
         printWarning(`Introduced in ${issue.introducedInVersion} (severity: ${issue.severity}):`);
         issue.changes.forEach((c) => console.log(`  • ${c}`));
