@@ -1,6 +1,6 @@
 import type { DependencyInfo } from '../types/dependency.js';
 import type { DependencyGraph } from '../types/dependencyGraph.js';
-import { detectBreakingChanges, type BreakingChangeCheckResult } from './breakingChanges.js';
+import { analyzeBreakingChanges, detectBreakingChanges, type BreakingChangeCheckResult, type BreakingChangeIssue } from './breakingChanges.js';
 import { analyzeWhyNot, type WhyNotConstraint } from './whyNot.js';
 import { findPathsGroupedByVersion } from '../utils/dependencyGraph.js';
 
@@ -8,7 +8,10 @@ export interface ImpactResult {
   package: string;
   currentVersion: string | null;
   targetVersion: string;
+  /** The most relevant breaking-change note (kept for backward compatibility). */
   breakingChange: BreakingChangeCheckResult;
+  /** Every applicable note between the installed and target version, newest first. */
+  breakingChanges: BreakingChangeIssue[];
   blockers: WhyNotConstraint[];
   /** Immediate names of every package that depends on `package` (directly or transitively),
    *  derived from the dependency graph — "these are worth re-testing after the upgrade". */
@@ -42,6 +45,9 @@ export function analyzeImpact(
   };
   const breakingChange = detectBreakingChanges(syntheticDep, currentVersion ?? undefined, true);
 
+  const breakingChanges = analyzeBreakingChanges([syntheticDep], current ? [current] : [syntheticDep], true)
+    .flatMap((r) => (r.detected && r.issue ? [r.issue] : []));
+
   const whyNot = analyzeWhyNot(cwd, dependencies, packageName, targetVersion);
 
   const reverseDependents = new Set<string>();
@@ -55,10 +61,10 @@ export function analyzeImpact(
   }
 
   const recommendedActions: string[] = [];
-  if (breakingChange.detected && breakingChange.issue && !breakingChange.issue.stale && breakingChange.issue.relevance !== 'historical') {
+  for (const issue of breakingChanges.filter((i) => !i.stale && i.relevance !== 'historical')) {
     recommendedActions.push(
-      `Review breaking changes introduced in ${packageName}@${breakingChange.issue.introducedInVersion}` +
-        (breakingChange.issue.migrationGuide ? ` (migration guide: ${breakingChange.issue.migrationGuide})` : '') +
+      `Review breaking changes introduced in ${packageName}@${issue.introducedInVersion}` +
+        (issue.migrationGuide ? ` (migration guide: ${issue.migrationGuide})` : '') +
         ' before upgrading.'
     );
   }
@@ -81,6 +87,7 @@ export function analyzeImpact(
     currentVersion,
     targetVersion,
     breakingChange,
+    breakingChanges,
     blockers: whyNot.blockers,
     reverseDependents: [...reverseDependents],
     recommendedActions,

@@ -33,15 +33,16 @@ export async function impactCommand(packageName: string, targetVersion: string, 
       printInfo(`"${packageName}" is not currently a direct dependency — evaluating as a new install.`);
     }
 
-    if (result.breakingChange.detected && result.breakingChange.issue) {
+    if (result.breakingChanges.length > 0) {
       printSection('Breaking Changes');
-      const issue = result.breakingChange.issue;
-      if (issue.stale || issue.relevance === 'historical') {
-        printInfo(`${packageName}@${issue.introducedInVersion} introduced changes, but this is already part of your current version — informational only.`);
-      } else {
-        printWarning(`Introduced in ${issue.introducedInVersion} (severity: ${issue.severity}):`);
-        issue.changes.forEach((c) => console.log(`  • ${c}`));
-        if (issue.migrationGuide) console.log(`  Migration guide: ${issue.migrationGuide}`);
+      for (const issue of result.breakingChanges) {
+        if (issue.stale || issue.relevance === 'historical') {
+          printInfo(`${packageName}@${issue.introducedInVersion} introduced changes, but this is already part of your current version — informational only.`);
+        } else {
+          printWarning(`Introduced in ${issue.introducedInVersion} (severity: ${issue.severity}):`);
+          issue.changes.forEach((c) => console.log(`  • ${c}`));
+          if (issue.migrationGuide) console.log(`  Migration guide: ${issue.migrationGuide}`);
+        }
       }
     } else if (result.breakingChange.hasData) {
       printSuccess('No known breaking changes for this version');

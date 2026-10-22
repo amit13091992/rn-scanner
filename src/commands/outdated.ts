@@ -2,6 +2,8 @@ import { coerce, gt } from 'semver';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { fetchLatestVersions } from '../utils/npmRegistry.js';
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
+import { detectExpo } from '../detectors/expo.js';
+import { isExpoManagedPackage } from '../data/expo/managedPackages.js';
 import { analyzeRecommendedUpdates } from '../analyzers/recommendedUpdates.js';
 import {
   printHeader,
@@ -75,6 +77,10 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
     const minor = outdated.filter(p => p.type === 'minor');
     const patch = outdated.filter(p => p.type === 'patch');
 
+    const expoSdk = detectExpo(cwd, packageJson);
+    const expoManaged = expoSdk.isExpo ? outdated.filter((pkg) => isExpoManagedPackage(pkg.name)) : [];
+    const expoManagedNames = new Set(expoManaged.map((pkg) => pkg.name));
+
     const recommendations = options.recommend
       ? await (async () => {
           const rnInfo = await detectReactNativeVersions(cwd);
@@ -94,6 +100,9 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
         },
         packages: outdated,
         ...(recommendations ? { recommendations } : {}),
+        ...(expoSdk.isExpo
+          ? { expo: { sdk: expoSdk.sdkVersion, managedByExpoSdk: expoManaged.map((pkg) => pkg.name) } }
+          : {}),
       };
       emitStructuredOutput(result, 'Outdated Dependencies', options);
       return;
@@ -120,7 +129,7 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
     printSection('Available Updates');
 
     function printPkgLine(pkg: OutdatedPackage): void {
-      console.log(`  ${pkg.name}: ${pkg.current} → ${pkg.latest}`);
+      console.log(`  ${pkg.name}: ${pkg.current} → ${pkg.latest}${expoManagedNames.has(pkg.name) ? `  (managed by Expo SDK ${expoSdk.sdkVersion ?? '?'})` : ''}`);
       const rec = recommendationByPackage.get(pkg.name);
       if (rec && rec.recommended !== pkg.latest) {
         if (rec.recommended) {
@@ -144,6 +153,11 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
     if (patch.length > 0 && !options.majorOnly) {
       printSuccess(`🟢 Patch Updates (${patch.length}) - Bug fixes only`);
       patch.forEach(printPkgLine);
+    }
+    if (expoManaged.length > 0) {
+      printWarning(
+        `${expoManaged.length} of these (marked "managed by Expo SDK ${expoSdk.sdkVersion ?? '?'}") are pinned by your Expo SDK — don't bump them by hand. Run \`npx expo install --fix\` to align them, or upgrade the SDK itself (\`npx expo install expo@latest\`); a newer React Native than the SDK pins will break the native build.`
+      );
     }
     if (options.recommend) {
       printInfo('Recommendations check each package\'s known React Native compatibility (data/compatibility.ts) — packages with no compatibility data default to the latest published version.');

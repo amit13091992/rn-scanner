@@ -70,6 +70,20 @@ export async function analyzeRecommendedUpdates(
 
     const latestMajor = major(coerce(pkg.latest) ?? '0.0.0');
     const bestRuleMajor = major(coerce(bestRule.version) ?? '0.0.0');
+    const installedMajor = major(coerce(pkg.current) ?? '0.0.0');
+
+    // The curated rules lag the registry: if the installed version is already past the newest
+    // line a rule covers, "the newest rule line" would be a downgrade, not a recommendation.
+    if (installedMajor > bestRuleMajor) {
+      results.push({
+        package: pkg.name,
+        current: pkg.current,
+        latest: pkg.latest,
+        recommended: pkg.latest,
+        reason: `Installed ${pkg.current} is already newer than the newest ${bestRule.version} line this tool has compatibility data for — no downgrade suggested`,
+      });
+      continue;
+    }
 
     if (bestRuleMajor >= latestMajor) {
       results.push({

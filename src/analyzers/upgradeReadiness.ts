@@ -1,3 +1,4 @@
+import { EXPO_SDK_REGISTRY, getExpoSdkRequirements } from '../data/expo/registry.js';
 import { analyzeBreakingChanges, type BreakingChangeIssue } from './breakingChanges.js';
 import { analyzeNewArchitecture } from './newArchitecture.js';
 import { analyzeAndroidEnvironment } from './androidEnvironment.js';
@@ -115,6 +116,19 @@ export function assessUpgradeReadiness(
     riskReasons.push(reason);
     if (level === 'high' || (level === 'medium' && risk === 'low')) risk = level;
   };
+  // An Expo SDK pins one React Native minor; moving React Native alone past it breaks the SDK's
+  // native modules, so this is a hard "upgrade Expo instead" signal, not a generic warning.
+  const expoDep = dependencies.find((d) => d.name === 'expo');
+  const expoSdk = expoDep ? coerce(expoDep.resolvedVersion || expoDep.requestedVersion)?.major : undefined;
+  const expoPin = expoSdk !== undefined ? getExpoSdkRequirements(expoSdk) : undefined;
+  const target = coerce(toVersion);
+  if (expoPin && target && `${target.major}.${target.minor}` !== expoPin.reactNative) {
+    const sdkForTarget = EXPO_SDK_REGISTRY.find((e) => e.reactNative === `${target.major}.${target.minor}`);
+    raise(
+      'high',
+      `Expo SDK ${expoPin.sdk} pins React Native ${expoPin.reactNative}, not ${toVersion} — upgrade the Expo SDK rather than React Native alone${sdkForTarget ? ` (Expo SDK ${sdkForTarget.sdk} pins React Native ${sdkForTarget.reactNative})` : ''}`
+    );
+  }
   if (criticalBreaking > 0) raise('high', `${criticalBreaking} critical breaking change(s) newly introduced by this upgrade`);
   if (newArchUnsupported > 0) raise('high', `${newArchUnsupported} package(s) do not support the New Architecture`);
   if (androidErrors + iosErrors + nodeErrors > 0) raise('high', `${androidErrors + iosErrors + nodeErrors} native-toolchain requirement(s) not met`);

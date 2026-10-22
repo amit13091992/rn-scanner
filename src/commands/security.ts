@@ -1,3 +1,4 @@
+import { isOffline } from '../utils/network.js';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { analyzeSecurityVulnerabilities, type SecurityAnalysisResult } from '../analyzers/securityVulnerabilities.js';
@@ -184,7 +185,8 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
       } else {
         printSecurityResult(result, graphManagerLabel(graph), { appName: appNameOf(cwd), verbose: !!options.verbose, summaryOnly: !!options.summary });
       }
-      criticalOrHighFound = exceedsThreshold(result, threshold);
+      // A scan that could not run is not a clean scan — fail CI unless the user asked for --offline.
+      criticalOrHighFound = exceedsThreshold(result, threshold) || (!result.scanned && !isOffline());
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

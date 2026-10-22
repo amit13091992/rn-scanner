@@ -3,6 +3,7 @@ import { getAllDependenciesWithResolution, readPackageJson } from '../utils/pack
 import { detectPackageManager } from '../utils/lockfile.js';
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
 import { analyzeAllDependencies } from '../analyzers/compatibility.js';
+import { isExpoManagedPackage } from '../data/expo/managedPackages.js';
 import { analyzeBreakingChanges } from '../analyzers/breakingChanges.js';
 import { analyzeNewArchitecture } from '../analyzers/newArchitecture.js';
 import { analyzeExpoCompatibility } from '../analyzers/expoCompatibility.js';
@@ -325,6 +326,8 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           expoCompat.messages.forEach((msg, idx) => {
             if (expoCompat.reactNativeMismatch && idx === 0) {
               printError(msg);
+            } else if (/requires the New Architecture|enables R8|builds against the iOS 27/.test(msg)) {
+              printInfo(msg);
             } else {
               printWarning(msg);
             }
@@ -453,7 +456,11 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
               printError(`${m.parent} requires ${kindLabel} ${m.dependency}@${m.requiredRange}, but ${m.installedVersion} is installed`);
             }
             console.log(`  ├─ Impact: ${m.parent} may fail to build or behave incorrectly at runtime until this is resolved`);
-            console.log(`  ├─ Fix step 1: Run ${installCommand(lockfileInfo.manager, m.dependency, m.requiredRange)}`);
+            if (expoCompat.isExpoProject && isExpoManagedPackage(m.dependency) && m.installedVersion !== null) {
+              console.log(`  ├─ Fix step 1: ${m.dependency} is managed by Expo SDK ${expoCompat.sdkVersion ?? '?'} — don't pin it to ${m.requiredRange}. Upgrade ${m.parent} to a release built for this SDK, or accept the mismatch knowingly (\`npx expo install ${m.dependency}\` keeps the SDK's version)`);
+            } else {
+              console.log(`  ├─ Fix step 1: Run ${installCommand(lockfileInfo.manager, m.dependency, m.requiredRange)}`);
+            }
             console.log('  ├─ Fix step 2: Re-run this scan to confirm the requirement is now satisfied');
             console.log(`  └─ If the install fails or conflicts, check ${m.parent}'s own peer/version requirements before forcing an override`);
           });

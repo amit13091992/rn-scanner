@@ -168,7 +168,10 @@ Lists available updates for your direct dependencies, grouped by major/minor/pat
 `--major-only` shows just the major-version bumps. `--recommend` resolves a React-Native-compatible
 recommended version per package (via `data/compatibility.ts`) instead of always pointing at npm's
 absolute latest — useful when the newest major of a package requires a React Native version your
-project hasn't reached yet.
+project hasn't reached yet (it never suggests a version lower than the one installed). In an Expo
+project, packages the SDK pins (`react`, `react-native`, `expo-*`, Reanimated, Screens, …) are
+marked "managed by Expo SDK N": don't bump them by hand — use `npx expo install --fix`, or move to
+a newer SDK.
 
 ### `upgrade`
 
@@ -187,6 +190,9 @@ readiness to upgrade React Native to the target version by combining:
   doesn't wrongly block an unrelated upgrade
 - New Architecture requirements at the target version
 - Android/iOS/Node toolchain deltas at the target version
+- the Expo SDK's React Native pin: in an Expo project, a target outside what the installed SDK
+  pins is rated `high` risk and names the SDK that does pin it (e.g. SDK 57 pins 0.86 → use SDK 58
+  for 0.88)
 - deprecated packages and duplicate dependencies
 
 Produces a `low`/`medium`/`high` `risk` score and a `READY`/`WARN`/`BLOCKED` `verdict`, plus a
@@ -405,7 +411,7 @@ npx rn-dep-scanner impact <package> <version> [--json] [--html [path]] [--cwd <p
 ```
 
 Goes further than `why-not`: breaking changes that apply between your installed version and the
-target (ones already in effect on your current version are shown as informational only), the same peer/version
+target — every applicable note, newest first (ones already in effect on your current version are shown as informational only; `--json` has them all under `breakingChanges`) — the same peer/version
 conflicts, and which other installed packages depend on this one (worth re-testing after
 upgrading), plus plain-language recommended actions.
 
@@ -547,7 +553,7 @@ npx rn-dep-scanner --version | --help
 | Command | Exits 1 when |
 |---|---|
 | `check` | `--strict` and there is an error-level finding (critical/high vulnerability, unsupported New Architecture package, leaked AI key, compatibility error) |
-| `security` | a finding at or above `--fail-on` (default `high`) |
+| `security` | a finding at or above `--fail-on` (default `high`), or the scan couldn't run (OSV unreachable/timed out — not when you passed `--offline`) |
 | `licenses` | a package matches `licenseDenylist` |
 | `policy` | any `bannedPackages` / `licenseDenylist` / `maxVulnerabilitySeverity` violation |
 | `baseline` | a new finding since the snapshot, no/unreadable baseline file, or the security scan couldn't run |
