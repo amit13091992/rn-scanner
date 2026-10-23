@@ -3,9 +3,7 @@ import { join } from 'node:path';
 import type { RnDepScannerConfig } from '../types/config.js';
 import type { CompatibilityRule } from '../types/dependency.js';
 
-const CONFIG_FILENAME = '.rn-preflight.json';
-/** Name used before the rn-dep-scanner → rn-preflight rename; still read when the new file is absent. */
-const LEGACY_CONFIG_FILENAME = '.rn-dep-scanner.json';
+const CONFIG_FILENAME = '.rn-dep-scanner.json';
 const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules'];
 const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
@@ -28,15 +26,14 @@ function describeType(value: unknown): string {
 }
 
 /**
- * Loads per-project rule overrides from `.rn-preflight.json` at the project root, if
+ * Loads per-project rule overrides from `.rn-dep-scanner.json` at the project root, if
  * present. Never throws: a missing file returns an empty config, and a malformed file (bad
  * JSON, wrong field types, unknown keys) degrades to the valid subset rather than failing the
  * whole `check` run — a mistake in a config file shouldn't take down the scanner. What's wrong
  * is reported back via `warnings` instead, so a typo doesn't silently do nothing.
  */
 export function loadConfig(cwd: string): LoadConfigResult {
-  const filename = existsSync(join(cwd, CONFIG_FILENAME)) ? CONFIG_FILENAME : LEGACY_CONFIG_FILENAME;
-  const configPath = join(cwd, filename);
+  const configPath = join(cwd, CONFIG_FILENAME);
   if (!existsSync(configPath)) return { config: {}, warnings: [] };
 
   const warnings: string[] = [];
@@ -46,7 +43,7 @@ export function loadConfig(cwd: string): LoadConfigResult {
   } catch (error) {
     return {
       config: {},
-      warnings: [`${filename}: could not be read (${error instanceof Error ? error.message : 'unknown error'}) — ignoring`],
+      warnings: [`${CONFIG_FILENAME}: could not be read (${error instanceof Error ? error.message : 'unknown error'}) — ignoring`],
     };
   }
 
@@ -56,12 +53,12 @@ export function loadConfig(cwd: string): LoadConfigResult {
   } catch (error) {
     return {
       config: {},
-      warnings: [`${filename}: invalid JSON (${error instanceof Error ? error.message : 'parse error'}) — ignoring`],
+      warnings: [`${CONFIG_FILENAME}: invalid JSON (${error instanceof Error ? error.message : 'parse error'}) — ignoring`],
     };
   }
 
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { config: {}, warnings: [`${filename}: expected a JSON object at the top level — ignoring`] };
+    return { config: {}, warnings: [`${CONFIG_FILENAME}: expected a JSON object at the top level — ignoring`] };
   }
 
   const record = parsed as Record<string, unknown>;
@@ -71,7 +68,7 @@ export function loadConfig(cwd: string): LoadConfigResult {
     if (isStringArray(record.ignorePackages)) {
       config.ignorePackages = record.ignorePackages;
     } else {
-      warnings.push(`${filename}: "ignorePackages" must be an array of strings, got ${describeType(record.ignorePackages)} — ignoring this field`);
+      warnings.push(`${CONFIG_FILENAME}: "ignorePackages" must be an array of strings, got ${describeType(record.ignorePackages)} — ignoring this field`);
     }
   }
 
@@ -79,7 +76,7 @@ export function loadConfig(cwd: string): LoadConfigResult {
     if (isStringArray(record.ignoreVulnerabilities)) {
       config.ignoreVulnerabilities = record.ignoreVulnerabilities;
     } else {
-      warnings.push(`${filename}: "ignoreVulnerabilities" must be an array of strings, got ${describeType(record.ignoreVulnerabilities)} — ignoring this field`);
+      warnings.push(`${CONFIG_FILENAME}: "ignoreVulnerabilities" must be an array of strings, got ${describeType(record.ignoreVulnerabilities)} — ignoring this field`);
     }
   }
 
@@ -87,7 +84,7 @@ export function loadConfig(cwd: string): LoadConfigResult {
     if (isStringArray(record.licenseDenylist)) {
       config.licenseDenylist = record.licenseDenylist;
     } else {
-      warnings.push(`${filename}: "licenseDenylist" must be an array of strings, got ${describeType(record.licenseDenylist)} — ignoring this field`);
+      warnings.push(`${CONFIG_FILENAME}: "licenseDenylist" must be an array of strings, got ${describeType(record.licenseDenylist)} — ignoring this field`);
     }
   }
 
@@ -95,7 +92,7 @@ export function loadConfig(cwd: string): LoadConfigResult {
     if (isStringArray(record.bannedPackages)) {
       config.bannedPackages = record.bannedPackages;
     } else {
-      warnings.push(`${filename}: "bannedPackages" must be an array of strings, got ${describeType(record.bannedPackages)} — ignoring this field`);
+      warnings.push(`${CONFIG_FILENAME}: "bannedPackages" must be an array of strings, got ${describeType(record.bannedPackages)} — ignoring this field`);
     }
   }
 
@@ -103,31 +100,31 @@ export function loadConfig(cwd: string): LoadConfigResult {
     if (typeof record.maxVulnerabilitySeverity === 'string' && VALID_SEVERITIES.has(record.maxVulnerabilitySeverity)) {
       config.maxVulnerabilitySeverity = record.maxVulnerabilitySeverity as RnDepScannerConfig['maxVulnerabilitySeverity'];
     } else {
-      warnings.push(`${filename}: "maxVulnerabilitySeverity" must be one of critical/high/moderate/low, got ${describeType(record.maxVulnerabilitySeverity)} — ignoring this field`);
+      warnings.push(`${CONFIG_FILENAME}: "maxVulnerabilitySeverity" must be one of critical/high/moderate/low, got ${describeType(record.maxVulnerabilitySeverity)} — ignoring this field`);
     }
   }
 
   if ('customCompatibilityRules' in record) {
     const value = record.customCompatibilityRules;
     if (!Array.isArray(value)) {
-      warnings.push(`${filename}: "customCompatibilityRules" must be an array, got ${describeType(value)} — ignoring this field`);
+      warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules" must be an array, got ${describeType(value)} — ignoring this field`);
     } else {
       const validRules: CompatibilityRule[] = [];
       value.forEach((entry, index) => {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-          warnings.push(`${filename}: "customCompatibilityRules[${index}]" must be an object — skipping this entry`);
+          warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules[${index}]" must be an object — skipping this entry`);
           return;
         }
         const e = entry as Record<string, unknown>;
         if (typeof e.package !== 'string' || typeof e.version !== 'string') {
-          warnings.push(`${filename}: "customCompatibilityRules[${index}]" must have string "package" and "version" fields — skipping this entry`);
+          warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules[${index}]" must have string "package" and "version" fields — skipping this entry`);
           return;
         }
         const optionalFieldsValid = (['reactNative', 'react', 'node'] as const).every(
           (field) => e[field] === undefined || typeof e[field] === 'string'
         );
         if (!optionalFieldsValid) {
-          warnings.push(`${filename}: "customCompatibilityRules[${index}]" has a non-string "reactNative"/"react"/"node" field — skipping this entry`);
+          warnings.push(`${CONFIG_FILENAME}: "customCompatibilityRules[${index}]" has a non-string "reactNative"/"react"/"node" field — skipping this entry`);
           return;
         }
         validRules.push({
@@ -144,7 +141,7 @@ export function loadConfig(cwd: string): LoadConfigResult {
 
   for (const key of Object.keys(record)) {
     if (!KNOWN_KEYS.includes(key as keyof RnDepScannerConfig)) {
-      warnings.push(`${filename}: unknown option "${key}" — ignoring (known options: ${KNOWN_KEYS.join(', ')})`);
+      warnings.push(`${CONFIG_FILENAME}: unknown option "${key}" — ignoring (known options: ${KNOWN_KEYS.join(', ')})`);
     }
   }
 

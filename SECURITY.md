@@ -2,14 +2,14 @@
 
 ## Reporting a vulnerability
 
-If you find a security issue in `rn-preflight` itself, please open a private report via
+If you find a security issue in `rn-dep-scanner` itself, please open a private report via
 GitHub's "Report a vulnerability" flow on this repository rather than a public issue.
 
 ## About the Socket.dev "Supply Chain Risk" alerts
 
 Automated scanners like [Socket.dev](https://socket.dev) flag packages that use certain
 capabilities — network access, shell access, filesystem access, environment variable access —
-as "supply chain risk," regardless of whether the usage is legitimate. `rn-preflight` is a
+as "supply chain risk," regardless of whether the usage is legitimate. `rn-dep-scanner` is a
 dependency/environment scanner, so several of these are inherent to what it does, not evidence
 of anything malicious. This section explains each one so a reviewer doesn't have to re-derive it.
 
@@ -21,7 +21,7 @@ of anything malicious. This section explains each one so a reviewer doesn't have
 | **Filesystem access** | The entire tool works by reading your `package.json`, lockfile, `node_modules`, and Android/iOS project config files. This is the product, not a side effect — see [Known Limitations](.claude/rules/known-limitations.md) for exactly what's read. | throughout `src/detectors/`, `src/parsers/` |
 | **Environment variable access** | Standard terminal-capability detection (is this a TTY? is `NO_COLOR`/`FORCE_COLOR`/`CI` set?) from this project's `chalk`/`ora` dependencies, used only to decide whether to print colored/animated output — not read or transmitted anywhere. | transitive: `is-interactive`, `ora` |
 | **URL strings** | Static string literals for documentation/migration-guide links shown in breaking-change output (e.g. `reactnative.dev/docs/upgrading`), and the OSV.dev API endpoint itself. Not runtime-constructed, not user data. | `src/analyzers/breakingChanges.ts`, `src/services/osvClient.ts` |
-| **Debug access / AI-detected anomaly / Unmaintained / Minified code** | Flagged on a transitive dependency at the time of a specific published version's scan, not on `rn-preflight`'s own code. `npm audit --omit=dev` reports 0 known vulnerabilities, and all four direct runtime dependencies (`chalk`, `commander`, `ora`, `semver`) are kept pinned to their latest release — see below. | transitive tree |
+| **Debug access / AI-detected anomaly / Unmaintained / Minified code** | Flagged on a transitive dependency at the time of a specific published version's scan, not on `rn-dep-scanner`'s own code. `npm audit --omit=dev` reports 0 known vulnerabilities, and all four direct runtime dependencies (`chalk`, `commander`, `ora`, `semver`) are kept pinned to their latest release — see below. | transitive tree |
 
 No dependency here is ever executed dynamically (`eval`, `new Function`, `vm.*` are not used
 anywhere in this codebase — verified by `grep -rn "new Function\|vm\.\|Reflect\." src/`).

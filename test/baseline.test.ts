@@ -48,7 +48,7 @@ test('baselineCommand - --create writes a baseline file and reports success', as
     const result = JSON.parse(output);
 
     assert.equal(result.created, true);
-    assert.ok(existsSync(join(dir, '.rn-preflight-baseline.json')));
+    assert.ok(existsSync(join(dir, '.rn-dep-scanner-baseline.json')));
   } finally {
     globalThis.fetch = originalFetch;
     cleanup(dir);
@@ -150,7 +150,7 @@ test('baselineCommand - fails closed instead of passing or writing an empty base
     const { output, exitCode } = await captureStdout(() => baselineCommand({ cwd: dir, json: true, create: true }));
     assert.equal(JSON.parse(output).scanned, false);
     assert.equal(exitCode, 1);
-    assert.equal(existsSync(join(dir, '.rn-preflight-baseline.json')), false);
+    assert.equal(existsSync(join(dir, '.rn-dep-scanner-baseline.json')), false);
   } finally {
     globalThis.fetch = originalFetch;
     cleanup(dir);
@@ -162,7 +162,7 @@ test('baselineCommand - a corrupt baseline file is reported clearly on check and
   const restore = mockOsv([]);
   try {
     writeLodashProject(dir);
-    const path = join(dir, '.rn-preflight-baseline.json');
+    const path = join(dir, '.rn-dep-scanner-baseline.json');
     writeFileSync(path, '<<<<<<< HEAD\n{"entries": [');
     const checked = await captureStdout(() => baselineCommand({ cwd: dir, json: true }));
     assert.match(JSON.parse(checked.output).error, /unreadable/);
@@ -171,26 +171,6 @@ test('baselineCommand - a corrupt baseline file is reported clearly on check and
     const created = JSON.parse((await captureStdout(() => baselineCommand({ cwd: dir, json: true, create: true }))).output);
     assert.equal(created.created, true);
     assert.deepEqual(JSON.parse(readFileSync(path, 'utf-8')).entries, []);
-  } finally {
-    restore();
-    cleanup(dir);
-  }
-});
-
-test('baselineCommand - an existing pre-rename .rn-dep-scanner-baseline.json keeps being read and updated in place', async () => {
-  const dir = makeTempDir();
-  const restore = mockOsv(['GHSA-old']);
-  try {
-    writeLodashProject(dir);
-    const legacy = join(dir, '.rn-dep-scanner-baseline.json');
-    writeFileSync(legacy, JSON.stringify({ createdAt: '2026-01-01T00:00:00.000Z', entries: ['lodash@4.17.0:GHSA-old'] }));
-    const checked = JSON.parse((await captureStdout(() => baselineCommand({ cwd: dir, json: true }))).output);
-    assert.equal(checked.summary.unchanged, 1);
-    assert.equal(checked.summary.new, 0);
-
-    await captureStdout(() => baselineCommand({ cwd: dir, json: true, create: true }));
-    assert.equal(existsSync(join(dir, '.rn-preflight-baseline.json')), false);
-    assert.equal(JSON.parse(readFileSync(legacy, 'utf-8')).entries.length, 1);
   } finally {
     restore();
     cleanup(dir);

@@ -67,7 +67,7 @@ export async function graphCommand(options: GraphOptions = {}): Promise<void> {
         } else {
           printInfo(`Direct-dependency-only hierarchy (not fully resolved for "${graph.manager}"): ${nodes.length} node(s)`);
         }
-        printInfo('Use --json for the full node/edge data, or --dot to render with Graphviz (e.g. `npx rn-preflight graph --dot | dot -Tpng -o graph.png`).');
+        printInfo('Use --json for the full node/edge data, or --dot to render with Graphviz (e.g. `npx rn-dep-scanner graph --dot | dot -Tpng -o graph.png`).');
       }
     }
   } catch (error) {

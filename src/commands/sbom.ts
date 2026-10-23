@@ -23,7 +23,7 @@ interface CycloneDxComponent {
  * is an output format on existing data, not new detection — coverage is complete for npm
  * (`hierarchyComplete: true`), direct-only for yarn/pnpm/bun (same known limitation as those
  * commands). Always writes to stdout, `check`/`security`-style, so it composes with shell
- * redirection (`npx rn-preflight sbom > sbom.json`) rather than needing its own `--output` flag.
+ * redirection (`npx rn-dep-scanner sbom > sbom.json`) rather than needing its own `--output` flag.
  */
 export async function sbomCommand(options: SbomOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();

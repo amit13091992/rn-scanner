@@ -23,7 +23,7 @@ export interface PolicyResult {
 const SEVERITY_RANK: Record<VulnerabilitySeverity, number> = { low: 0, moderate: 1, high: 2, critical: 3, unknown: -1 };
 
 /**
- * Evaluates a project against `.rn-preflight.json`'s org-policy fields
+ * Evaluates a project against `.rn-dep-scanner.json`'s org-policy fields
  * (`bannedPackages`/`licenseDenylist`/`maxVulnerabilitySeverity`) by reusing the existing
  * license and security analyzers rather than re-implementing their detection — `policy` is a
  * gate on top of data those already produce, not a new detection source. Banned packages are

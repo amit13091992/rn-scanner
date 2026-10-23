@@ -14,7 +14,7 @@ export interface PolicyOptions {
   cwd?: string;
   /** Evaluate the policy against every workspace package in the monorepo, not just `cwd`. */
   allWorkspaces?: boolean;
-  /** Write a starter `.rn-preflight.json` (refuses to overwrite an existing one) and exit. */
+  /** Write a starter `.rn-dep-scanner.json` (refuses to overwrite an existing one) and exit. */
   init?: boolean;
 }
 
@@ -25,12 +25,10 @@ const STARTER_POLICY = {
 };
 
 function initPolicy(cwd: string, jsonMode: boolean, options: PolicyOptions): void {
-  const target = join(cwd, '.rn-preflight.json');
-  const legacy = join(cwd, '.rn-dep-scanner.json');
-  if (existsSync(target) || existsSync(legacy)) {
-    const existing = existsSync(target) ? target : legacy;
-    const message = `${existing} already exists — add "bannedPackages", "licenseDenylist" or "maxVulnerabilitySeverity" to it by hand; not overwriting.`;
-    if (jsonMode) emitStructuredOutput({ created: false, path: existing, error: message }, 'Policy Init', options);
+  const target = join(cwd, '.rn-dep-scanner.json');
+  if (existsSync(target)) {
+    const message = `${target} already exists — add "bannedPackages", "licenseDenylist" or "maxVulnerabilitySeverity" to it by hand; not overwriting.`;
+    if (jsonMode) emitStructuredOutput({ created: false, path: target, error: message }, 'Policy Init', options);
     else printWarning(message);
     return;
   }
@@ -39,7 +37,7 @@ function initPolicy(cwd: string, jsonMode: boolean, options: PolicyOptions): voi
     emitStructuredOutput({ created: true, path: target, policy: STARTER_POLICY }, 'Policy Init', options);
   } else {
     printSuccess(`Created ${target}`);
-    printInfo('Starter rules: block GPL-3.0/AGPL-3.0 licenses and any vulnerability at "high" or above. Add package names to "bannedPackages" to forbid them, then run `npx rn-preflight policy`.');
+    printInfo('Starter rules: block GPL-3.0/AGPL-3.0 licenses and any vulnerability at "high" or above. Add package names to "bannedPackages" to forbid them, then run `npx rn-dep-scanner policy`.');
   }
 }
 
@@ -55,7 +53,7 @@ async function evaluateOneProject(cwd: string): Promise<{ result: PolicyResult; 
 function printPolicyResult(result: PolicyResult, warnings: string[]): void {
   warnings.forEach((w) => printWarning(w));
   if (result.rulesConfigured === 0) {
-    printInfo('No policy rules configured. Run `npx rn-preflight policy --init` to create a starter .rn-preflight.json, or add "bannedPackages", "licenseDenylist" or "maxVulnerabilitySeverity" by hand.');
+    printInfo('No policy rules configured. Run `npx rn-dep-scanner policy --init` to create a starter .rn-dep-scanner.json, or add "bannedPackages", "licenseDenylist" or "maxVulnerabilitySeverity" by hand.');
   } else if (result.passed) {
     printSuccess(`No policy violations (${result.rulesConfigured} rule(s) checked)`);
   } else {

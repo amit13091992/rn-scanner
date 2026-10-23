@@ -1,10 +1,10 @@
 name: 'RN Native-Toolchain Readiness Gate'
 description: >
   Scans a React Native project's Node/Java/Gradle/AGP/Kotlin/compileSdk/Xcode toolchain
-  against React Native's native-requirement baseline — via rn-preflight `doctor` (current
+  against React Native's native-requirement baseline — via rn-dep-scanner `doctor` (current
   version) or `upgrade --to <target-version>` (a planned upgrade) — and posts the resulting
   READY/WARN/BLOCKED verdict as a PR comment (updated in place on re-runs).
-author: 'rn-preflight'
+author: 'rn-dep-scanner'
 branding:
   icon: 'check-circle'
   color: 'green'
@@ -27,7 +27,7 @@ inputs:
     required: false
     default: 'false'
   scanner-version:
-    description: 'npm version of rn-preflight to install.'
+    description: 'npm version of rn-dep-scanner to install.'
     required: false
     default: 'latest'
   github-token:
@@ -43,9 +43,9 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install rn-preflight
+    - name: Install rn-dep-scanner
       shell: bash
-      run: npm install --no-save "rn-preflight@${{ inputs.scanner-version }}"
+      run: npm install --no-save "rn-dep-scanner@${{ inputs.scanner-version }}"
 
     - name: Run preflight scan
       id: scan
@@ -58,16 +58,16 @@ runs:
           ALL_WORKSPACES_FLAG="--all-workspaces"
         fi
         if [ -n "${{ inputs.target-version }}" ]; then
-          npx rn-preflight upgrade --to "${{ inputs.target-version }}" --json $ALL_WORKSPACES_FLAG > rn-preflight-result.json
+          npx rn-dep-scanner upgrade --to "${{ inputs.target-version }}" --json $ALL_WORKSPACES_FLAG > rn-dep-scanner-result.json
           echo "kind=upgrade" >> "$GITHUB_OUTPUT"
         else
-          npx rn-preflight doctor --json $ALL_WORKSPACES_FLAG > rn-preflight-result.json
+          npx rn-dep-scanner doctor --json $ALL_WORKSPACES_FLAG > rn-dep-scanner-result.json
           echo "kind=doctor" >> "$GITHUB_OUTPUT"
         fi
         # A `--all-workspaces` result has a top-level `workspaces[]` array instead of its own
         # `verdict` — roll up the worst of every package's verdict for the action's own output.
         VERDICT=$(node -e "
-          const data = JSON.parse(require('fs').readFileSync('rn-preflight-result.json', 'utf8'));
+          const data = JSON.parse(require('fs').readFileSync('rn-dep-scanner-result.json', 'utf8'));
           const order = { READY: 0, WARN: 1, BLOCKED: 2 };
           if (Array.isArray(data.workspaces)) {
             console.log(data.workspaces.reduce((worst, p) => order[p.verdict] > order[worst] ? p.verdict : worst, 'READY'));
@@ -85,11 +85,11 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_EVENT_PATH: ${{ github.event_path }}
-      run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-preflight-result.json "${{ steps.scan.outputs.kind }}"
+      run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-dep-scanner-result.json "${{ steps.scan.outputs.kind }}"
 
 # Usage:
 #
-# - uses: <owner>/rn-preflight@v1
+# - uses: <owner>/rn-dep-scanner@v1
 #   with:
 #     target-version: '0.87'    # optional; omit to check the currently installed RN version
 #     all-workspaces: 'true'    # optional; scan every workspace package in the monorepo and

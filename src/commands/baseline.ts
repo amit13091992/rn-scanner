@@ -3,7 +3,7 @@ import { readPackageJson, getAllDependenciesWithResolution } from '../utils/pack
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { loadConfig } from '../utils/config.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
-import { createBaseline, diffBaselineDetailed, readBaselineFile, resolveBaselinePath, severityCounts, writeBaselineFile } from '../utils/baseline.js';
+import { createBaseline, diffBaselineDetailed, readBaselineFile, severityCounts, writeBaselineFile, BASELINE_FILENAME } from '../utils/baseline.js';
 import { printGroupedVulnerabilities, SEVERITY_ORDER } from '../utils/securityFormat.js';
 import { printHeader, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
@@ -16,7 +16,7 @@ export interface BaselineOptions {
 }
 
 /**
- * `--create` snapshots current known-vulnerability findings to `.rn-preflight-baseline.json`
+ * `--create` snapshots current known-vulnerability findings to `.rn-dep-scanner-baseline.json`
  * so CI can be set up to fail only on *new* findings, not the backlog a large existing project
  * already has (the "adopt this on day one without a wall of pre-existing issues" workflow).
  * Without `--create`, re-scans and reports only findings not already in the baseline.
@@ -34,8 +34,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
     const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
     const graph = await buildDependencyGraph(cwd);
     const securityResult = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
-    const baselinePath = resolveBaselinePath(cwd);
-    const baselineName = basename(baselinePath);
+    const baselinePath = join(cwd, BASELINE_FILENAME);
 
     const appName = packageJson.name || basename(cwd);
 
@@ -64,7 +63,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
         emitStructuredOutput(
           {
             created: true,
-            path: baselineName,
+            path: BASELINE_FILENAME,
             entries: baseline.entries.length,
             bySeverity: counts,
             ...(previous ? { replaced: { previousEntries: previous.entries.length, added, removed } } : {}),
@@ -75,10 +74,10 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
       } else {
         printHeader('Baseline');
         if (existing.status === 'corrupt') {
-          printWarning(`The existing ${baselineName} was unreadable (${existing.reason}) and has been replaced`);
+          printWarning(`The existing ${BASELINE_FILENAME} was unreadable (${existing.reason}) and has been replaced`);
         }
         printSuccess(
-          `${previous ? 'Updated' : 'Created'} ${baselineName} with ${baseline.entries.length} known finding(s)${bySeverity.length ? ` (${bySeverity.join(', ')})` : ''}`
+          `${previous ? 'Updated' : 'Created'} ${BASELINE_FILENAME} with ${baseline.entries.length} known finding(s)${bySeverity.length ? ` (${bySeverity.join(', ')})` : ''}`
         );
         if (previous) {
           printInfo(`Replaced the previous baseline (${previous.entries.length} finding(s)): +${added} added, -${removed} dropped`);
@@ -86,10 +85,10 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
         if (baseline.entries.length === 0) {
           printInfo('No vulnerabilities found right now — the baseline is empty, so any future finding will be reported as new.');
         }
-        console.log(`\n  Next: commit ${baselineName}, then run \`npx rn-preflight baseline\` in CI — it exits 1 only on findings not listed here.`);
+        console.log(`\n  Next: commit ${BASELINE_FILENAME}, then run \`npx rn-dep-scanner baseline\` in CI — it exits 1 only on findings not listed here.`);
       }
     } else if (readBaselineFile(baselinePath).status === 'missing') {
-      const error = `No baseline found at ${baselineName} — run \`npx rn-preflight baseline --create\` first`;
+      const error = `No baseline found at ${BASELINE_FILENAME} — run \`npx rn-dep-scanner baseline --create\` first`;
       if (jsonMode) {
         emitStructuredOutput({ error }, 'Baseline', options);
       } else {
@@ -99,7 +98,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
     } else {
       const loaded = readBaselineFile(baselinePath);
       if (loaded.status !== 'ok') {
-        const error = `${baselineName} is unreadable (${loaded.status === 'corrupt' ? loaded.reason : 'missing'}) — fix or delete it, then run \`npx rn-preflight baseline --create\``;
+        const error = `${BASELINE_FILENAME} is unreadable (${loaded.status === 'corrupt' ? loaded.reason : 'missing'}) — fix or delete it, then run \`npx rn-dep-scanner baseline --create\``;
         if (jsonMode) {
           emitStructuredOutput({ error }, 'Baseline', options);
         } else {

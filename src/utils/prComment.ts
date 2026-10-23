@@ -2,8 +2,6 @@ import type { EnvironmentRequirement } from '../types/environmentRequirement.js'
 import type { Verdict } from '../types/verdict.js';
 
 /** Marker embedded in every posted comment so a re-run updates it instead of duplicating it. */
-// Intentionally unchanged by the rename: it is an invisible id, and keeping it lets the action
-// keep updating comments already posted on open PRs instead of adding a second one.
 export const PR_COMMENT_MARKER = '<!-- rn-dep-scanner:verdict -->';
 
 const VERDICT_BADGE: Record<Verdict, string> = {
@@ -107,7 +105,7 @@ export function formatVerdictComment(input: VerdictCommentInput): string {
     '',
     body,
     '',
-    '<sub>Posted by [rn-preflight](https://www.npmjs.com/package/rn-preflight) — re-run to refresh this comment.</sub>',
+    '<sub>Posted by [rn-dep-scanner](https://www.npmjs.com/package/rn-dep-scanner) — re-run to refresh this comment.</sub>',
   ].join('\n');
 }
 
@@ -151,6 +149,6 @@ export function formatAggregatedVerdictComment(input: AggregatedVerdictCommentIn
     '',
     ...packageSections,
     '',
-    '<sub>Posted by [rn-preflight](https://www.npmjs.com/package/rn-preflight) — re-run to refresh this comment.</sub>',
+    '<sub>Posted by [rn-dep-scanner](https://www.npmjs.com/package/rn-dep-scanner) — re-run to refresh this comment.</sub>',
   ].join('\n');
 }

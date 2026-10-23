@@ -41,7 +41,7 @@ test('policyCommand - flags a banned package and exits 1', async () => {
   const dir = makeTempDir();
   try {
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'app', dependencies: { 'banned-pkg': '1.0.0' } }));
-    writeFileSync(join(dir, '.rn-preflight.json'), JSON.stringify({ bannedPackages: ['banned-pkg'] }));
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ bannedPackages: ['banned-pkg'] }));
 
     const { output, exitCode } = await captureStdout(() => policyCommand({ cwd: dir, json: true }));
     const result = JSON.parse(output);
@@ -84,8 +84,8 @@ test('policyCommand - --all-workspaces aggregates violations across every worksp
     writeFileSync(join(root, 'yarn.lock'), `banned-pkg@1.0.0:\n  version "1.0.0"\n  resolved "https://registry.yarnpkg.com/banned-pkg/-/banned-pkg-1.0.0.tgz"\n`);
     writeFileSync(join(sharedDir, 'package.json'), JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: {} }));
     writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', dependencies: { 'banned-pkg': '1.0.0' } }));
-    writeFileSync(join(sharedDir, '.rn-preflight.json'), JSON.stringify({ bannedPackages: ['banned-pkg'] }));
-    writeFileSync(join(appDir, '.rn-preflight.json'), JSON.stringify({ bannedPackages: ['banned-pkg'] }));
+    writeFileSync(join(sharedDir, '.rn-dep-scanner.json'), JSON.stringify({ bannedPackages: ['banned-pkg'] }));
+    writeFileSync(join(appDir, '.rn-dep-scanner.json'), JSON.stringify({ bannedPackages: ['banned-pkg'] }));
 
     const { output, exitCode } = await captureStdout(() =>
       policyCommand({ cwd: appDir, json: true, allWorkspaces: true })

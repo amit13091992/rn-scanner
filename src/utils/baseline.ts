@@ -1,17 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { SecurityScanResult, VulnerabilitySeverity } from '../types/vulnerability.js';
 
-export const BASELINE_FILENAME = '.rn-preflight-baseline.json';
-/** Pre-rename name; an existing legacy baseline keeps being read and updated in place. */
-export const LEGACY_BASELINE_FILENAME = '.rn-dep-scanner-baseline.json';
-
-/** The baseline file to use for `cwd`: the new name, else an existing legacy file, else the new name. */
-export function resolveBaselinePath(cwd: string): string {
-  const current = join(cwd, BASELINE_FILENAME);
-  const legacy = join(cwd, LEGACY_BASELINE_FILENAME);
-  return !existsSync(current) && existsSync(legacy) ? legacy : current;
-}
+export const BASELINE_FILENAME = '.rn-dep-scanner-baseline.json';
 
 export interface BaselineFinding {
   key: string;

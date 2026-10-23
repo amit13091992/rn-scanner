@@ -110,7 +110,7 @@ test('policy --init writes a starter config once and never overwrites', async ()
   console.log = () => {};
   try {
     await policyCommand({ cwd: dir, init: true });
-    const target = join(dir, '.rn-preflight.json');
+    const target = join(dir, '.rn-dep-scanner.json');
     assert.ok(existsSync(target));
     const first = readFileSync(target, 'utf-8');
     writeFileSync(target, '{"bannedPackages":["x"]}');
@@ -124,12 +124,12 @@ test('policy --init writes a starter config once and never overwrites', async ()
 });
 
 test('offline mode makes no network call and resolves null', async () => {
-  process.env.RN_PREFLIGHT_OFFLINE = '1';
+  process.env.RN_DEP_SCANNER_OFFLINE = '1';
   try {
     assert.equal(isOffline(), true);
     assert.equal(await fetchWithTimeout('http://127.0.0.1:1/never'), null);
   } finally {
-    delete process.env.RN_PREFLIGHT_OFFLINE;
+    delete process.env.RN_DEP_SCANNER_OFFLINE;
   }
 });
 

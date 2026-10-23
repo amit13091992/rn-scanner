@@ -203,7 +203,7 @@ export async function whyCommand(packageName: string, options: WhyOptions = {}):
 
         if (occurrences.length > 1) {
           printWarning(
-            `${occurrences.length} versions of "${packageName}" are installed — run \`rn-preflight tree --duplicates\` to see where they diverge.`
+            `${occurrences.length} versions of "${packageName}" are installed — run \`rn-dep-scanner tree --duplicates\` to see where they diverge.`
           );
         }
         console.log(

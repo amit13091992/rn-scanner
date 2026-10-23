@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// CI glue for the rn-preflight GitHub Action: reads a `doctor`/`upgrade --json` result file
+// CI glue for the rn-dep-scanner GitHub Action: reads a `doctor`/`upgrade --json` result file
 // and posts (or updates) a single PR comment with the READY/WARN/BLOCKED verdict. Kept as a
 // plain script rather than part of src/ since it's action-only tooling, not library code.
 import { readFileSync } from 'node:fs';
 
 async function loadFormatter() {
   try {
-    return await import('rn-preflight/dist/utils/prComment.js');
+    return await import('rn-dep-scanner/dist/utils/prComment.js');
   } catch {
     // Fallback for dogfooding inside this repo's own checkout, where the "package" being
     // exercised is this repo itself rather than an installed node_modules dependency.
@@ -92,7 +92,7 @@ async function main() {
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'rn-preflight-action',
+    'User-Agent': 'rn-dep-scanner-action',
     'Content-Type': 'application/json',
   };
 

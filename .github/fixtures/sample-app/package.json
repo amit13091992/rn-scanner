@@ -1,5 +1,5 @@
 {
-  "name": "rn-preflight-dogfood-fixture",
+  "name": "rn-dep-scanner-dogfood-fixture",
   "version": "1.0.0",
   "private": true,
   "description": "Minimal React Native project used by this repo's own CI to dogfood the preflight scan + PR comment pipeline. Not a real app.",

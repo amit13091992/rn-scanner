@@ -210,7 +210,7 @@ test('queryVulnerabilities - a shared vulnerability ID across two packages is fe
 });
 
 test('queryVulnerabilities - a detail fetch that keeps failing keeps the finding (id + link, unknown severity) instead of hiding it', async () => {
-  process.env.RN_PREFLIGHT_RETRY_DELAY_MS = '0';
+  process.env.RN_DEP_SCANNER_RETRY_DELAY_MS = '0';
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL) => {
     const urlStr = url.toString();
@@ -227,12 +227,12 @@ test('queryVulnerabilities - a detail fetch that keeps failing keeps the finding
     assert.equal(result.results[0]?.vulnerabilities[0]?.severity, 'unknown');
   } finally {
     globalThis.fetch = originalFetch;
-    delete process.env.RN_PREFLIGHT_RETRY_DELAY_MS;
+    delete process.env.RN_DEP_SCANNER_RETRY_DELAY_MS;
   }
 });
 
 test('queryVulnerabilities - a transient failure is retried and the scan still succeeds', async () => {
-  process.env.RN_PREFLIGHT_RETRY_DELAY_MS = '0';
+  process.env.RN_DEP_SCANNER_RETRY_DELAY_MS = '0';
   const originalFetch = globalThis.fetch;
   let batchCalls = 0;
   globalThis.fetch = (async (url: string | URL) => {
@@ -249,7 +249,7 @@ test('queryVulnerabilities - a transient failure is retried and the scan still s
     assert.equal(batchCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
-    delete process.env.RN_PREFLIGHT_RETRY_DELAY_MS;
+    delete process.env.RN_DEP_SCANNER_RETRY_DELAY_MS;
   }
 });
 

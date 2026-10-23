@@ -44,7 +44,7 @@ export async function outdatedCommand(options: OutdatedOptions = {}): Promise<vo
 
   try {
     if (!jsonMode) {
-      printHeader('RN Preflight - Outdated Check');
+      printHeader('RN Deps Scanner - Outdated Check');
     }
 
     const packageJson = readPackageJson(cwd);

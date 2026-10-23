@@ -13,7 +13,7 @@ function cleanup(dir: string): void {
   rmSync(dir, { recursive: true, force: true });
 }
 
-test('loadConfig - returns empty config and no warnings when .rn-preflight.json does not exist', () => {
+test('loadConfig - returns empty config and no warnings when .rn-dep-scanner.json does not exist', () => {
   const dir = makeTempDir();
   try {
     assert.deepEqual(loadConfig(dir), { config: {}, warnings: [] });
@@ -26,7 +26,7 @@ test('loadConfig - reads ignorePackages and ignoreVulnerabilities with no warnin
   const dir = makeTempDir();
   try {
     writeFileSync(
-      join(dir, '.rn-preflight.json'),
+      join(dir, '.rn-dep-scanner.json'),
       JSON.stringify({ ignorePackages: ['noisy-pkg'], ignoreVulnerabilities: ['GHSA-aaaa-bbbb-cccc'] })
     );
     const { config, warnings } = loadConfig(dir);
@@ -41,7 +41,7 @@ test('loadConfig - reads ignorePackages and ignoreVulnerabilities with no warnin
 test('loadConfig - malformed JSON degrades to empty config and reports why', () => {
   const dir = makeTempDir();
   try {
-    writeFileSync(join(dir, '.rn-preflight.json'), '{ not valid json');
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), '{ not valid json');
     const { config, warnings } = loadConfig(dir);
     assert.deepEqual(config, {});
     assert.equal(warnings.length, 1);
@@ -55,7 +55,7 @@ test('loadConfig - a field with the wrong type is dropped and reported, valid fi
   const dir = makeTempDir();
   try {
     writeFileSync(
-      join(dir, '.rn-preflight.json'),
+      join(dir, '.rn-dep-scanner.json'),
       JSON.stringify({ ignorePackages: 'not-an-array', ignoreVulnerabilities: ['GHSA-aaaa-bbbb-cccc'] })
     );
     const { config, warnings } = loadConfig(dir);
@@ -71,7 +71,7 @@ test('loadConfig - a field with the wrong type is dropped and reported, valid fi
 test('loadConfig - an array containing a non-string element is dropped and reported', () => {
   const dir = makeTempDir();
   try {
-    writeFileSync(join(dir, '.rn-preflight.json'), JSON.stringify({ ignoreVulnerabilities: [1, 2, 3] }));
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ ignoreVulnerabilities: [1, 2, 3] }));
     const { config, warnings } = loadConfig(dir);
     assert.equal(config.ignoreVulnerabilities, undefined);
     assert.equal(warnings.length, 1);
@@ -84,7 +84,7 @@ test('loadConfig - an array containing a non-string element is dropped and repor
 test('loadConfig - an unknown top-level key is reported, likely catching a typo', () => {
   const dir = makeTempDir();
   try {
-    writeFileSync(join(dir, '.rn-preflight.json'), JSON.stringify({ ignorePackage: ['noisy-pkg'] }));
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ ignorePackage: ['noisy-pkg'] }));
     const { config, warnings } = loadConfig(dir);
     assert.deepEqual(config, {});
     assert.equal(warnings.length, 1);
@@ -97,7 +97,7 @@ test('loadConfig - an unknown top-level key is reported, likely catching a typo'
 test('loadConfig - a top-level non-object JSON value degrades to empty config and reports why', () => {
   const dir = makeTempDir();
   try {
-    writeFileSync(join(dir, '.rn-preflight.json'), '"just a string"');
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), '"just a string"');
     const { config, warnings } = loadConfig(dir);
     assert.deepEqual(config, {});
     assert.equal(warnings.length, 1);
@@ -110,7 +110,7 @@ test('loadConfig - a top-level non-object JSON value degrades to empty config an
 test('loadConfig - a top-level array degrades to empty config and reports why', () => {
   const dir = makeTempDir();
   try {
-    writeFileSync(join(dir, '.rn-preflight.json'), '[]');
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), '[]');
     const { config, warnings } = loadConfig(dir);
     assert.deepEqual(config, {});
     assert.equal(warnings.length, 1);
@@ -124,7 +124,7 @@ test('loadConfig - reads valid customCompatibilityRules', () => {
   const dir = makeTempDir();
   try {
     writeFileSync(
-      join(dir, '.rn-preflight.json'),
+      join(dir, '.rn-dep-scanner.json'),
       JSON.stringify({
         customCompatibilityRules: [
           { package: 'my-internal-fork', version: '1.x', reactNative: '>=0.75.0' },
@@ -145,7 +145,7 @@ test('loadConfig - skips an invalid customCompatibilityRules entry with a warnin
   const dir = makeTempDir();
   try {
     writeFileSync(
-      join(dir, '.rn-preflight.json'),
+      join(dir, '.rn-dep-scanner.json'),
       JSON.stringify({
         customCompatibilityRules: [
           { package: 'good-pkg', version: '1.x' },
@@ -160,17 +160,5 @@ test('loadConfig - skips an invalid customCompatibilityRules entry with a warnin
     assert.equal(warnings.length, 2);
   } finally {
     cleanup(dir);
-  }
-});
-
-test('loadConfig - still reads the pre-rename .rn-dep-scanner.json when the new file is absent, preferring .rn-preflight.json', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'config-legacy-'));
-  try {
-    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ ignorePackages: ['legacy-pkg'] }));
-    assert.deepEqual(loadConfig(dir).config.ignorePackages, ['legacy-pkg']);
-    writeFileSync(join(dir, '.rn-preflight.json'), JSON.stringify({ ignorePackages: ['new-pkg'] }));
-    assert.deepEqual(loadConfig(dir).config.ignorePackages, ['new-pkg']);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
   }
 });

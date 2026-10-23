@@ -189,7 +189,7 @@ export async function upgradeCommand(toVersion: string | undefined, options: Upg
       console.log(`  ℹ Verdict is based on JavaScript-level data only — the ${unverifiedToolchains.map((k) => (k === 'ios' ? 'iOS' : 'Android')).join(' and ')} toolchain could not be checked (no android/ios folder found). Restore or generate it (\`npx expo prebuild\` for Expo projects) and re-run for a native check.`);
     }
     if (outdatedMajors > 0) {
-      console.log(`  • ${outdatedMajors} dependenc${outdatedMajors === 1 ? 'y has' : 'ies have'} a newer major version available (run \`npx rn-preflight outdated\`)`);
+      console.log(`  • ${outdatedMajors} dependenc${outdatedMajors === 1 ? 'y has' : 'ies have'} a newer major version available (run \`npx rn-dep-scanner outdated\`)`);
     }
     console.log('');
 

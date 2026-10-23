@@ -10,7 +10,7 @@ export function analyzeCompatibility(
   reactVersion: string | null,
   customRules: CompatibilityRule[] = []
 ): CompatibilityCheckResult {
-  // Project-specific rules (`.rn-preflight.json`'s `customCompatibilityRules`) are checked
+  // Project-specific rules (`.rn-dep-scanner.json`'s `customCompatibilityRules`) are checked
   // in addition to the curated built-ins, not instead of them — an internal fork or an
   // unreleased dependency this project depends on can get a rule without waiting on
   // `data/compatibility.ts` to be updated upstream.

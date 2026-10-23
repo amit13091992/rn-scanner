@@ -17,7 +17,7 @@ export function analyzePageSize(cwd: string, dependencies: DependencyInfo[]): Pa
   for (const dep of dependencies) {
     // The scanner itself is a dev tool, never shipped in the app binary (and a `file:` link to a
     // checkout would otherwise drag its own test fixtures into the report).
-    if (dep.name === 'rn-preflight' || dep.name === 'rn-dep-scanner') continue;
+    if (dep.name === 'rn-dep-scanner') continue;
     const libraryFiles = findNativeLibraries(cwd, dep.name);
     const version = dep.resolvedVersion || dep.requestedVersion;
 

@@ -42,7 +42,7 @@ yarn/pnpm/bun transitive graph + workspace cross-linking, `--all-workspaces` eve
   (`utils/workspacePackages.ts`) — a scan started inside a workspace package resolves against
   the monorepo root, and a sibling workspace package it depends on is a real graph node.
 - `--profile` opt-in step timing on `check`/`doctor` (`utils/profiler.ts`).
-- `.rn-preflight.json` config with validation: `ignorePackages`, `ignoreVulnerabilities`,
+- `.rn-dep-scanner.json` config with validation: `ignorePackages`, `ignoreVulnerabilities`,
   `licenseDenylist`, `bannedPackages`, `maxVulnerabilitySeverity`, `customCompatibilityRules`.
 - Universal `--html [path]` output (`utils/htmlOutput.ts`) on every command that has `--json`, plus `sbom` — renders the same result data as a minimal HTML page instead of/alongside JSON.
 - ESLint (`eslint.config.js` — JS-syntax only, covers `scripts/**/*.mjs`; `src`/`test`
@@ -74,10 +74,10 @@ yarn/pnpm/bun transitive graph + workspace cross-linking, `--all-workspaces` eve
 - 16KB page-size `status: "not-checked"` now carries `notCheckedReason`
   (`'no_native_libraries' | 'unreadable_library'`) so "no native code to check" and "found a
   library but couldn't parse it" are distinguishable (`src/types/pageSize.ts`).
-- Fixed `dist/index.js` missing its executable bit, which made `rn-preflight <command>` fail
-  after a global install while `npx rn-preflight` (which invokes via `node` directly) still
+- Fixed `dist/index.js` missing its executable bit, which made `rn-dep-scanner <command>` fail
+  after a global install while `npx rn-dep-scanner` (which invokes via `node` directly) still
   worked — `npm run build` now chmods the entry point (`package.json`'s `build:chmod` step).
-- README clarified: `.rn-preflight.json` (user-authored config) vs. `.rn-preflight-baseline.json`
+- README clarified: `.rn-dep-scanner.json` (user-authored config) vs. `.rn-dep-scanner-baseline.json`
   (tool-generated snapshot) are two distinct files; every config field documented with its actual
   meaning (`licenseDenylist`'s `"GPL-3.0"` was previously ambiguous — an example, not a default).
 
