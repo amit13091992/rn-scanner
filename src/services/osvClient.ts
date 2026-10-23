@@ -1,7 +1,7 @@
 import { coerce, gt as semverGt, gte as semverGte, lt as semverLt } from 'semver';
 import type { RawPackageVulnerabilityResult, RawSecurityScanResult, VulnerabilityInfo, VulnerabilitySeverity } from '../types/vulnerability.js';
 
-import { fetchWithTimeout, isOffline, networkTimeoutMs } from '../utils/network.js';
+import { fetchWithTimeout, isOffline, networkTimeoutMs, readEnv } from '../utils/network.js';
 
 const OSV_BATCH_URL = 'https://api.osv.dev/v1/querybatch';
 const OSV_VULN_URL = 'https://api.osv.dev/v1/vulns/';
@@ -47,7 +47,7 @@ interface OsvVulnRecord {
 }
 
 function retryDelayMs(attempt: number): number {
-  const base = Number.parseInt(process.env.RN_DEP_SCANNER_RETRY_DELAY_MS ?? '', 10);
+  const base = Number.parseInt(readEnv('RETRY_DELAY_MS') ?? '', 10);
   return (Number.isFinite(base) && base >= 0 ? base : 300) * attempt;
 }
 

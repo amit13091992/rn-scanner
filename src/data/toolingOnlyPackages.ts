@@ -26,6 +26,7 @@ export const TOOLING_ONLY_PACKAGE_PATTERNS: RegExp[] = [
   /^lint-staged$/,
   /^nodemon$/,
   /^patch-package$/,
+  /^rn-preflight$/,
   /^rn-dep-scanner$/,
 ];
 

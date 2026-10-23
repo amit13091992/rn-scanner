@@ -77,7 +77,7 @@ async function runAcrossWorkspaces(cwd: string, options: CheckOptions): Promise<
   }
 
   if (!jsonMode) {
-    printHeader('RN Deps Scanner (all workspaces)');
+    printHeader('RN Preflight (all workspaces)');
   }
 
   let anyExit = false;
@@ -104,7 +104,7 @@ async function runAcrossWorkspaces(cwd: string, options: CheckOptions): Promise<
   }
 
   if (jsonMode) {
-    emitStructuredOutput({ workspaces: perPackageResults }, 'RN Deps Scanner Report (all workspaces)', options);
+    emitStructuredOutput({ workspaces: perPackageResults }, 'RN Preflight Report (all workspaces)', options);
   }
 
   if (anyExit) {
@@ -131,7 +131,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const jsonMode = !!options.json || !!options.html;
 
     if (!jsonMode) {
-      printHeader('RN Deps Scanner');
+      printHeader('RN Preflight');
     }
 
     const { config, warnings: configWarnings } = loadConfig(cwd);
@@ -176,7 +176,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       if (ignoredPackages.length > 0) {
         const actuallyIgnored = allDependencies.filter((d) => ignoredPackages.includes(d.name));
         if (actuallyIgnored.length > 0) {
-          printInfo(`Ignoring ${actuallyIgnored.length} package(s) per .rn-dep-scanner.json: ${actuallyIgnored.map((d) => d.name).join(', ')}`);
+          printInfo(`Ignoring ${actuallyIgnored.length} package(s) per .rn-preflight.json: ${actuallyIgnored.map((d) => d.name).join(', ')}`);
         }
       }
     }
@@ -635,7 +635,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
           : {}),
         ...(options.profile ? { profile: { steps: profiler.report(), totalMs: profiler.totalMs() } } : {}),
       };
-      emitStructuredOutput(result, 'RN Deps Scanner Report', options);
+      emitStructuredOutput(result, 'RN Preflight Report', options);
     }
 
     const criticalOrHighVulns = securityResult
@@ -649,7 +649,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (options.json || options.html) {
-      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'RN Deps Scanner Report', options);
+      emitStructuredOutput({ error: `Fatal error: ${message}` }, 'RN Preflight Report', options);
     } else {
       printError(`Fatal error: ${message}`);
     }

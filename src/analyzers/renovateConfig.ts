@@ -24,7 +24,7 @@ const CORE_PACKAGES = ['react-native', 'react', 'react-dom', 'expo'];
  * scrutiny than a pure-JS dependency bump), and gives any package this project's own New
  * Architecture data (`data/newArchitecture.ts`) already flags as unsupported a dedicated
  * high-priority group — an update to one of those might *be* the fix. Respects this project's
- * own `ignorePackages` (`.rn-dep-scanner.json`) by excluding them from Renovate entirely via
+ * own `ignorePackages` (`.rn-preflight.json`) by excluding them from Renovate entirely via
  * `ignoreDeps`. Pure data transformation — no network call, no new dependency (plain JSON).
  */
 export function buildRenovateConfig(
@@ -69,7 +69,7 @@ export function buildRenovateConfig(
       matchPackageNames: reviewFlagged,
       labels: ['new-architecture-review'],
       prPriority: 5,
-      description: `rn-dep-scanner flagged these as unsupported on the New Architecture${
+      description: `rn-preflight flagged these as unsupported on the New Architecture${
         reactNativeVersion ? ` at the installed React Native ${reactNativeVersion}` : ''
       } — an update may fix this, so prioritize reviewing it.`,
     });

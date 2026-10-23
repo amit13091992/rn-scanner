@@ -60,15 +60,15 @@ process.exit = ((code?: number) => {
 const program = new Command();
 
 program
-  .name('rn-dep-scanner')
+  .name('rn-preflight')
   .description('React Native dependency scanner - compatibility, breaking changes & security vulnerabilities')
   .version(version)
   .option('--offline', 'Make no network calls (OSV.dev, npm registry); network-backed sections report as skipped')
   .option('--timeout <ms>', 'Per-request network timeout in milliseconds (default 8000)')
   .hook('preAction', () => {
     const globals = program.opts<{ offline?: boolean; timeout?: string }>();
-    if (globals.offline) process.env.RN_DEP_SCANNER_OFFLINE = '1';
-    if (globals.timeout) process.env.RN_DEP_SCANNER_TIMEOUT_MS = globals.timeout;
+    if (globals.offline) process.env.RN_PREFLIGHT_OFFLINE = '1';
+    if (globals.timeout) process.env.RN_PREFLIGHT_TIMEOUT_MS = globals.timeout;
   });
 
 program
@@ -331,12 +331,12 @@ program
 
 program
   .command('policy')
-  .description('Evaluate the project against .rn-dep-scanner.json org-policy rules (bannedPackages, licenseDenylist, maxVulnerabilitySeverity)')
+  .description('Evaluate the project against .rn-preflight.json org-policy rules (bannedPackages, licenseDenylist, maxVulnerabilitySeverity)')
   .option('--json', 'Output as JSON')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
   .option('--all-workspaces', 'Evaluate every workspace package in the monorepo, not just --cwd')
-  .option('--init', 'Create a starter .rn-dep-scanner.json with example policy rules, then exit')
+  .option('--init', 'Create a starter .rn-preflight.json with example policy rules, then exit')
   .action(async (options) => {
     await policyCommand({
       init: options.init || false,
@@ -507,7 +507,7 @@ program
     });
   });
 
-// `check` is registered with { isDefault: true } so bare `rn-dep-scanner [options]` runs it —
+// `check` is registered with { isDefault: true } so bare `rn-preflight [options]` runs it —
 // but that same default-command wiring means an unrecognized subcommand name (a typo) is
 // otherwise silently routed to `check` as an unexpected positional argument, producing a
 // confusing "too many arguments for 'check'" error instead of a clear "unknown command".
@@ -517,7 +517,7 @@ if (firstArg && !firstArg.startsWith('-') && firstArg !== 'help') {
   const knownCommands = program.commands.map((cmd) => cmd.name());
   if (!knownCommands.includes(firstArg)) {
     printError(`Unknown command: "${firstArg}"`);
-    console.log(`\nRun 'npx rn-dep-scanner --help' to see the full command list, or 'npx rn-dep-scanner check' for the default dependency-compatibility scan.`);
+    console.log(`\nRun 'npx rn-preflight --help' to see the full command list, or 'npx rn-preflight check' for the default dependency-compatibility scan.`);
     process.exit(1);
   }
 }

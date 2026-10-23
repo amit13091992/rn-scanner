@@ -37,5 +37,5 @@ test('CLI - a known command name is unaffected by the unknown-command guard', ()
 test('CLI - bare invocation still runs the default `check` command', () => {
   const { stdout, code } = run(['--help']);
   assert.equal(code, 0);
-  assert.match(stdout, /RN Deps Scanner|rn-dep-scanner/i);
+  assert.match(stdout, /RN Preflight|rn-preflight/i);
 });

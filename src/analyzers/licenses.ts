@@ -23,7 +23,7 @@ export interface LicenseAnalysisResult {
 
 /**
  * Reads each installed dependency's own declared license and cross-references it against an
- * optional denylist (`.rn-dep-scanner.json`'s `licenseDenylist`, e.g. `["GPL-3.0", "AGPL-3.0"]`
+ * optional denylist (`.rn-preflight.json`'s `licenseDenylist`, e.g. `["GPL-3.0", "AGPL-3.0"]`
  * for a project that can't ship copyleft-licensed code). Matching is case-insensitive and
  * exact against the license identifier as declared — it does not parse SPDX expression syntax
  * (`(MIT OR Apache-2.0)`), so a package using an SPDX expression is reported under that literal

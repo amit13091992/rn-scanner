@@ -80,11 +80,11 @@ test('checkCommand - json output reports the detected react-native/react version
   }
 });
 
-test('checkCommand - a package listed in .rn-dep-scanner.json ignorePackages is excluded from the dependency list', async () => {
+test('checkCommand - a package listed in .rn-preflight.json ignorePackages is excluded from the dependency list', async () => {
   const dir = makeTempDir();
   try {
     writeProject(dir, { 'react-native': '0.75.0', react: '18.3.1', 'noisy-pkg': '1.0.0' });
-    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ ignorePackages: ['noisy-pkg'] }));
+    writeFileSync(join(dir, '.rn-preflight.json'), JSON.stringify({ ignorePackages: ['noisy-pkg'] }));
 
     const { output } = await captureStdout(() => checkCommand({ cwd: dir, json: true }));
     const result = JSON.parse(output);
@@ -96,11 +96,11 @@ test('checkCommand - a package listed in .rn-dep-scanner.json ignorePackages is 
   }
 });
 
-test('checkCommand - surfaces a malformed .rn-dep-scanner.json as a config warning without failing the scan', async () => {
+test('checkCommand - surfaces a malformed .rn-preflight.json as a config warning without failing the scan', async () => {
   const dir = makeTempDir();
   try {
     writeProject(dir, { 'react-native': '0.75.0', react: '18.3.1' });
-    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ ignorePackages: 'not-an-array' }));
+    writeFileSync(join(dir, '.rn-preflight.json'), JSON.stringify({ ignorePackages: 'not-an-array' }));
 
     const { output } = await captureStdout(() => checkCommand({ cwd: dir, json: true }));
     const result = JSON.parse(output);
@@ -229,12 +229,12 @@ test('checkCommand - --strict does not exit 1 for a project with no New Architec
   }
 });
 
-test('checkCommand - a customCompatibilityRules entry in .rn-dep-scanner.json flags an incompatible internal/unreleased package', async () => {
+test('checkCommand - a customCompatibilityRules entry in .rn-preflight.json flags an incompatible internal/unreleased package', async () => {
   const dir = makeTempDir();
   try {
     writeProject(dir, { 'react-native': '0.70.0', react: '18.3.1', 'my-internal-fork': '1.0.0' });
     writeFileSync(
-      join(dir, '.rn-dep-scanner.json'),
+      join(dir, '.rn-preflight.json'),
       JSON.stringify({
         customCompatibilityRules: [
           { package: 'my-internal-fork', version: '1.x', reactNative: '>=0.75.0' },

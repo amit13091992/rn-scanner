@@ -47,7 +47,7 @@ test('licensesCommand - flags a package matching the configured denylist and exi
   const dir = makeTempDir();
   try {
     writeProject(dir, 'GPL-3.0');
-    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ licenseDenylist: ['gpl-3.0'] }));
+    writeFileSync(join(dir, '.rn-preflight.json'), JSON.stringify({ licenseDenylist: ['gpl-3.0'] }));
 
     const { output, exitCode } = await captureStdout(() => licensesCommand({ cwd: dir, json: true }));
     const result = JSON.parse(output);
@@ -92,8 +92,8 @@ test('licensesCommand - --all-workspaces aggregates license findings across ever
 
     writeFileSync(join(sharedDir, 'package.json'), JSON.stringify({ name: '@acme/shared', version: '1.0.0', dependencies: { 'mit-pkg': '1.0.0' } }));
     writeFileSync(join(appDir, 'package.json'), JSON.stringify({ name: 'mobile-app', dependencies: { 'copyleft-pkg': '1.0.0' } }));
-    writeFileSync(join(sharedDir, '.rn-dep-scanner.json'), JSON.stringify({ licenseDenylist: ['gpl-3.0'] }));
-    writeFileSync(join(appDir, '.rn-dep-scanner.json'), JSON.stringify({ licenseDenylist: ['gpl-3.0'] }));
+    writeFileSync(join(sharedDir, '.rn-preflight.json'), JSON.stringify({ licenseDenylist: ['gpl-3.0'] }));
+    writeFileSync(join(appDir, '.rn-preflight.json'), JSON.stringify({ licenseDenylist: ['gpl-3.0'] }));
 
     const { output, exitCode } = await captureStdout(() =>
       licensesCommand({ cwd: appDir, json: true, allWorkspaces: true })

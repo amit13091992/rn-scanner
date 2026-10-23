@@ -68,7 +68,7 @@ export async function analyzeSecurityVulnerabilities(
   });
   const scanWithMeta: SecurityScanResult = { ...rawScan, results: withGraphMeta };
 
-  // Accepted-risk suppression (.rn-dep-scanner.json ignoreVulnerabilities): drop specific
+  // Accepted-risk suppression (.rn-preflight.json ignoreVulnerabilities): drop specific
   // advisory IDs, and drop a package entirely if that removes its last remaining vulnerability
   // — never invent a "clean" scan when the scan itself failed (scanned: false is untouched).
   const ignoreSet = new Set(ignoreVulnerabilityIds);

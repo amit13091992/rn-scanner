@@ -1,8 +1,15 @@
-# rn-dep-scanner
+# rn-preflight
 
 A React Native project health scanner: dependency compatibility, breaking changes, native
 toolchain/environment checks, transitive security scanning, and supply-chain reporting — all
 from one CLI.
+
+> **Renamed from `rn-dep-scanner`.** The package is now `rn-preflight`. The old `rn-dep-scanner`
+> command still works as an alias, and the old names are still read for compatibility:
+> `.rn-dep-scanner.json` (used when `.rn-preflight.json` is absent), an existing
+> `.rn-dep-scanner-baseline.json` (kept and updated in place), and the `RN_DEP_SCANNER_OFFLINE` /
+> `RN_DEP_SCANNER_TIMEOUT_MS` environment variables. To migrate: `npm uninstall -g rn-dep-scanner &&
+> npm install -g rn-preflight`, then optionally rename the config/baseline files.
 
 ## Contents
 
@@ -16,7 +23,7 @@ from one CLI.
 - [Code-level analysis](#code-level-analysis)
 - [Reporting & CI](#reporting--ci)
 - [Global options, network behaviour & exit codes](#global-options-network-behaviour--exit-codes)
-- [Config file (`.rn-dep-scanner.json`)](#config-file-rn-dep-scannerjson)
+- [Config file (`.rn-preflight.json`)](#config-file-rn-preflightjson)
 - [Output formats (`--json` / `--html`)](#output-formats---json----html)
 - [Security notes](#security-notes)
 - [Known limitations](#known-limitations)
@@ -24,25 +31,25 @@ from one CLI.
 
 ## Install
 
-`rn-dep-scanner` is a dev-only CLI tool — it's never imported by your app's runtime code, so it
+`rn-preflight` is a dev-only CLI tool — it's never imported by your app's runtime code, so it
 should never end up in your production dependency tree. A global install (or `npx`) sidesteps
 the question entirely; if you install it locally into a project, use `--save-dev`/`-D` so it
 lands in `devDependencies`, not `dependencies` (npm/pnpm/yarn have no way for a package to force
 this itself — it's entirely determined by the flag you pass to your install command).
 
 ```bash
-npm install -g rn-dep-scanner
+npm install -g rn-preflight
 # or
-npx rn-dep-scanner
+npx rn-preflight
 # or, to pin a version per-project instead of installing globally:
-npm install --save-dev rn-dep-scanner
-pnpm add -D rn-dep-scanner
-yarn add -D rn-dep-scanner
+npm install --save-dev rn-preflight
+pnpm add -D rn-preflight
+yarn add -D rn-preflight
 ```
 
-After a global install, `rn-dep-scanner <command>` also works directly (no `npx` needed). Every example below uses `npx rn-dep-scanner <command>`, which works with or without a global install. If it
+After a global install, `rn-preflight <command>` also works directly (no `npx` needed). Every example below uses `npx rn-preflight <command>`, which works with or without a global install. If it
 doesn't (an old install predating a fix, or your global bin directory isn't on `PATH`), run
-`npm config get prefix` and confirm that prefix's `bin/` is on your `PATH`; `npx rn-dep-scanner`
+`npm config get prefix` and confirm that prefix's `bin/` is on your `PATH`; `npx rn-preflight`
 always works as a fallback regardless, since it resolves and runs the package without relying
 on `PATH`.
 
@@ -50,13 +57,13 @@ on `PATH`.
 
 ```bash
 cd your-react-native-project
-npx rn-dep-scanner              # same as `npx rn-dep-scanner check` — the default command
-npx rn-dep-scanner doctor       # is your native toolchain (JDK/AGP/Xcode/...) ready to build?
-npx rn-dep-scanner upgrade --to 0.88.0   # what would upgrading to RN 0.88 break?
-npx rn-dep-scanner upgrade --latest      # ...or just assess against whatever RN's latest is right now
+npx rn-preflight              # same as `npx rn-preflight check` — the default command
+npx rn-preflight doctor       # is your native toolchain (JDK/AGP/Xcode/...) ready to build?
+npx rn-preflight upgrade --to 0.88.0   # what would upgrading to RN 0.88 break?
+npx rn-preflight upgrade --latest      # ...or just assess against whatever RN's latest is right now
 ```
 
-Run `npx rn-dep-scanner --help` for the live command list, or `rn-dep-scanner <command> --help` for
+Run `npx rn-preflight --help` for the live command list, or `rn-preflight <command> --help` for
 any command's exact flags — this README is kept in sync with that output, but the CLI itself is
 always the source of truth.
 
@@ -106,7 +113,7 @@ workspace).
 ### `check` (default command)
 
 ```bash
-rn-dep-scanner [check] [--json] [--html [path]] [--strict] [--cwd <path>] [--no-security] [--verbose] [--profile] [--all-workspaces]
+rn-preflight [check] [--json] [--html [path]] [--strict] [--cwd <path>] [--no-security] [--verbose] [--profile] [--all-workspaces]
 ```
 
 The main scan. Reads `package.json` + your lockfile and reports, against the detected
@@ -135,7 +142,7 @@ legacy bridge is removed). `--profile` prints a per-step timing breakdown of the
 ### `doctor`
 
 ```bash
-npx rn-dep-scanner doctor [--json] [--html [path]] [--cwd <path>] [--ipa <path>] [--profile] [--all-workspaces]
+npx rn-preflight doctor [--json] [--html [path]] [--cwd <path>] [--ipa <path>] [--profile] [--all-workspaces]
 ```
 
 Checks whether your machine/project is actually ready to *build*, separately from whether your
@@ -161,7 +168,7 @@ informational dSYM-presence check for a built `.ipa`/`.xcarchive` (doesn't affec
 ### `outdated`
 
 ```bash
-npx rn-dep-scanner outdated [--major-only] [--recommend] [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight outdated [--major-only] [--recommend] [--json] [--html [path]] [--cwd <path>]
 ```
 
 Lists available updates for your direct dependencies, grouped by major/minor/patch severity.
@@ -176,8 +183,8 @@ a newer SDK.
 ### `upgrade`
 
 ```bash
-npx rn-dep-scanner upgrade --to <version> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
-npx rn-dep-scanner upgrade --latest [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-preflight upgrade --to <version> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-preflight upgrade --latest [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Give `--to <version>` or `--latest` (with neither, `--latest` is assumed). `--latest` resolves the target version from
@@ -212,7 +219,7 @@ output, or the `upgradePath` array in `--json`.
 ### `compare-rn <from> <to>`
 
 ```bash
-npx rn-dep-scanner compare-rn <from> <to> [--json] [--html [path]]
+npx rn-preflight compare-rn <from> <to> [--json] [--html [path]]
 ```
 
 Pure lookup against the built-in RN-version → native-toolchain-requirement registry — diffs two
@@ -225,7 +232,7 @@ RN versions' Node/Android/iOS baselines with no project scan needed. No `--cwd`.
 ### `why <package>`
 
 ```bash
-npx rn-dep-scanner why <package> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-preflight why <package> [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Explains why a package is installed. For each resolved version it shows whether it is a **direct**
@@ -242,7 +249,7 @@ workspace package in the monorepo.
 ### `tree [package]`
 
 ```bash
-npx rn-dep-scanner tree [package] [--duplicates] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-preflight tree [package] [--duplicates] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
 Prints the full dependency tree, or the subtree rooted at `package` if given. `--duplicates`
@@ -256,14 +263,14 @@ graph.
 ### `graph`
 
 ```bash
-npx rn-dep-scanner graph [--json] [--html [path]] [--dot] [--cwd <path>]
+npx rn-preflight graph [--json] [--html [path]] [--dot] [--cwd <path>]
 ```
 
 Exposes the dependency graph as raw data instead of a rendered tree — `--json` gives every
 node's id/name/version/parents/children; `--dot` gives Graphviz output:
 
 ```bash
-npx rn-dep-scanner graph --dot | dot -Tpng -o graph.png
+npx rn-preflight graph --dot | dot -Tpng -o graph.png
 ```
 
 ---
@@ -273,7 +280,7 @@ npx rn-dep-scanner graph --dot | dot -Tpng -o graph.png
 ### `ai-exposure`
 
 ```bash
-npx rn-dep-scanner ai-exposure [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight ai-exposure [--json] [--html [path]] [--cwd <path>]
 ```
 
 Flags client-side AI exposure — a 2026 mobile-app risk category of its own: direct dependencies
@@ -289,7 +296,7 @@ literal is found.
 ### `security`
 
 ```bash
-npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>]
+npx rn-preflight security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (the same data `check`
@@ -301,7 +308,7 @@ prints counts plus one line per package. Exits 1 on a finding at or above `--fai
 follows result paging, retries transient failures, and keeps a finding (id + link, unknown
 severity) if its detail lookup still fails rather than silently dropping it; if OSV can't be
 reached at all it reports `scanned: false` instead of "no vulnerabilities". Respects
-`ignoreVulnerabilities` in `.rn-dep-scanner.json`. `--all-workspaces` scans every workspace
+`ignoreVulnerabilities` in `.rn-preflight.json`. `--all-workspaces` scans every workspace
 package in the monorepo containing `--cwd` and aggregates the results into one report (`--json`
 gives a `workspaces[]` array plus a combined `summary`), instead of just the one package
 `--cwd` points at; a no-op outside a workspace.
@@ -309,11 +316,11 @@ gives a `workspaces[]` array plus a combined `summary`), instead of just the one
 ### `licenses`
 
 ```bash
-npx rn-dep-scanner licenses [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose]
+npx rn-preflight licenses [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose]
 ```
 
 Reports each package's declared license across the full transitive tree (counts per license, with copyleft and unknown licenses called out; `--verbose` lists every package), optionally flagging a
-`licenseDenylist` from `.rn-dep-scanner.json` (exits 1 on a match). Reads only each package's
+`licenseDenylist` from `.rn-preflight.json` (exits 1 on a match). Reads only each package's
 *hoisted* `node_modules/<name>/package.json` — a version that lost the hoist to a conflicting
 sibling won't have its license read; see [Known limitations](#known-limitations).
 `--all-workspaces` reports against every workspace package in the monorepo, same aggregation
@@ -322,7 +329,7 @@ behavior as `security` above.
 ### `sbom`
 
 ```bash
-npx rn-dep-scanner sbom [--html [path]] [--cwd <path>]
+npx rn-preflight sbom [--html [path]] [--cwd <path>]
 ```
 
 Exports a CycloneDX 1.5 Software Bill of Materials to stdout as JSON (no `--json` flag needed —
@@ -331,7 +338,7 @@ JSON is simply the default output; pass `--html` for an HTML rendering instead).
 ### `renovate-config`
 
 ```bash
-npx rn-dep-scanner renovate-config [--out <path>] [--cwd <path>]
+npx rn-preflight renovate-config [--out <path>] [--cwd <path>]
 ```
 
 Generates a starter Renovate config aware of React Native's specific update risks — not a
@@ -341,13 +348,13 @@ one PR (they must stay version-locked), groups every `react-native-*`/
 group (a native-module update can break at runtime without a type error), and gives any
 installed package `data/newArchitecture.ts` already flags as unsupported a dedicated
 high-priority group labeled `new-architecture-review` — an update to one of those might *be*
-the fix. Respects `.rn-dep-scanner.json`'s `ignorePackages` via Renovate's `ignoreDeps`. Prints
+the fix. Respects `.rn-preflight.json`'s `ignorePackages` via Renovate's `ignoreDeps`. Prints
 to stdout by default; `--out <path>` writes the file (e.g. `--out renovate.json`) instead.
 
 ### `diff --from <dir> --to <dir>`
 
 ```bash
-npx rn-dep-scanner diff --from <dir> --to <dir> [--json] [--html [path]]
+npx rn-preflight diff --from <dir> --to <dir> [--json] [--html [path]]
 ```
 
 `--from`/`--to` are required project directories (not lockfile paths). Compares their dependency
@@ -358,21 +365,21 @@ directories you pass are the inputs).
 ### `policy`
 
 ```bash
-npx rn-dep-scanner policy [--init] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
+npx rn-preflight policy [--init] [--json] [--html [path]] [--cwd <path>] [--all-workspaces]
 ```
 
-`policy --init` writes a starter `.rn-dep-scanner.json` (never overwrites an existing one). Otherwise evaluates `.rn-dep-scanner.json`'s `bannedPackages`, `licenseDenylist`, and
-`maxVulnerabilitySeverity` fields (see [Config](#config-file-rn-dep-scannerjson)) by reusing the
+`policy --init` writes a starter `.rn-preflight.json` (never overwrites an existing one). Otherwise evaluates `.rn-preflight.json`'s `bannedPackages`, `licenseDenylist`, and
+`maxVulnerabilitySeverity` fields (see [Config](#config-file-rn-preflightjson)) by reusing the
 same analyzers `licenses`/`security` use. Exits 1 on any violation. `--all-workspaces` evaluates
 every workspace package in the monorepo, same aggregation behavior as `security` above — each
-workspace package reads its own `.rn-dep-scanner.json`, so a monorepo-wide policy currently
+workspace package reads its own `.rn-preflight.json`, so a monorepo-wide policy currently
 means placing (or symlinking) the same config into each workspace package.
 
 ### `baseline`
 
 ```bash
-npx rn-dep-scanner baseline --create [--cwd <path>]           # snapshot current security findings
-npx rn-dep-scanner baseline [--json] [--html [path]] [--cwd <path>]   # report only what's new since the snapshot
+npx rn-preflight baseline --create [--cwd <path>]           # snapshot current security findings
+npx rn-preflight baseline [--json] [--html [path]] [--cwd <path>]   # report only what's new since the snapshot
 ```
 
 Useful for adopting the tool on a large existing project without a wall of pre-existing issues
@@ -383,8 +390,8 @@ if the security scan can't run (e.g. offline), `--create` writes nothing and a c
 rather than reporting "no new vulnerabilities". An unreadable baseline file (truncated, merge-conflict markers) is reported clearly on a check, and `--create` replaces it with a warning; the file is written atomically. Scoped to security vulnerabilities only (not every `check` issue
 category — see [Known limitations](#known-limitations)).
 
-`baseline --create` writes `.rn-dep-scanner-baseline.json` to the project root — a **generated
-snapshot file**, distinct from the `.rn-dep-scanner.json` config file: you don't hand-write or
+`baseline --create` writes `.rn-preflight-baseline.json` to the project root — a **generated
+snapshot file**, distinct from the `.rn-preflight.json` config file: you don't hand-write or
 edit it, and there's no policy to configure inside it. Re-running `--create` overwrites it with
 current findings (and reports how many were added/dropped versus the previous snapshot). Decide per-project whether to commit it: commit it if "new findings since this
 snapshot" should be consistent for every contributor/CI run; leave it gitignored if each
@@ -397,7 +404,7 @@ machine/branch should track its own baseline independently.
 ### `why-not <package> <version>`
 
 ```bash
-npx rn-dep-scanner why-not <package> <version> [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight why-not <package> <version> [--json] [--html [path]] [--cwd <path>]
 ```
 
 Explains which installed package's declared peer/dependency range is blocking a specific
@@ -407,7 +414,7 @@ protocol reference) is reported as unknown, never guessed true or false.
 ### `impact <package> <version>`
 
 ```bash
-npx rn-dep-scanner impact <package> <version> [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight impact <package> <version> [--json] [--html [path]] [--cwd <path>]
 ```
 
 Goes further than `why-not`: breaking changes that apply between your installed version and the
@@ -418,7 +425,7 @@ upgrading), plus plain-language recommended actions.
 ### `unused`
 
 ```bash
-npx rn-dep-scanner unused [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight unused [--json] [--html [path]] [--cwd <path>]
 ```
 
 Heuristic (regex-based `require`/`import` scan of project source) flagging declared dependencies
@@ -433,7 +440,7 @@ excluded automatically.
 ### `legacy-apis`
 
 ```bash
-npx rn-dep-scanner legacy-apis [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight legacy-apis [--json] [--html [path]] [--cwd <path>]
 ```
 
 Detects source imports of core React Native APIs that were removed and split into community
@@ -448,7 +455,7 @@ exists isn't covered.
 ### `a11y`
 
 ```bash
-npx rn-dep-scanner a11y [--json] [--html [path]] [--strict] [--cwd <path>]
+npx rn-preflight a11y [--json] [--html [path]] [--strict] [--cwd <path>]
 ```
 
 Flags interactive elements — `Pressable`, `Touchable*`, `Image`, `Switch`, `TextInput`, `Button`,
@@ -469,7 +476,7 @@ custom-component findings are marked low confidence.
 ### `bundle`
 
 ```bash
-npx rn-dep-scanner bundle [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight bundle [--json] [--html [path]] [--cwd <path>]
 ```
 
 Reports each direct dependency's on-disk install size, largest first — a quick "what's heavy"
@@ -479,7 +486,7 @@ included here but might not end up in an actual bundle).
 ### `architecture`
 
 ```bash
-npx rn-dep-scanner architecture [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight architecture [--json] [--html [path]] [--cwd <path>]
 ```
 
 Just the New Architecture (Fabric/TurboModules) compatibility check `check` already runs, on its
@@ -489,7 +496,7 @@ own. A package with no compatibility data reports `support: "data_unavailable"` 
 ### `native`
 
 ```bash
-npx rn-dep-scanner native [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight native [--json] [--html [path]] [--cwd <path>]
 ```
 
 Just the Android/iOS native toolchain check `doctor` already runs, on its own (no Hermes/Node/
@@ -499,7 +506,7 @@ Just the Android/iOS native toolchain check `doctor` already runs, on its own (n
 ### `16kb`
 
 ```bash
-npx rn-dep-scanner 16kb [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight 16kb [--json] [--html [path]] [--cwd <path>]
 ```
 
 Just the Android 16KB page-size alignment check `doctor` already runs, on its own. A
@@ -514,7 +521,7 @@ found but couldn't be parsed).
 ### `report`
 
 ```bash
-npx rn-dep-scanner report [--format md|html] [--out <path>] [--cwd <path>]
+npx rn-preflight report [--format md|html] [--out <path>] [--cwd <path>]
 ```
 
 Renders a condensed health-score/compatibility/deprecated-packages/New-Architecture/security
@@ -524,7 +531,7 @@ deliberately smaller, decision-focused view, not a full mirror of `check --json`
 ### `watch`
 
 ```bash
-npx rn-dep-scanner watch [--interval <seconds>] [--once] [--iterations <n>] [--json] [--html [path]] [--cwd <path>]
+npx rn-preflight watch [--interval <seconds>] [--once] [--iterations <n>] [--json] [--html [path]] [--cwd <path>]
 ```
 
 Runs `check` on a repeating interval (default 300s) — for a long-running terminal/CI job. It
@@ -539,13 +546,13 @@ on the next cycle instead of ending the watch.
 ## Global options, network behaviour & exit codes
 
 ```bash
-npx rn-dep-scanner [--offline] [--timeout <ms>] <command> ...
-npx rn-dep-scanner --version | --help
+npx rn-preflight [--offline] [--timeout <ms>] <command> ...
+npx rn-preflight --version | --help
 ```
 
-- **`--offline`** — no OSV.dev or npm-registry calls (also `RN_DEP_SCANNER_OFFLINE=1`);
+- **`--offline`** — no OSV.dev or npm-registry calls (also `RN_PREFLIGHT_OFFLINE=1`);
   network-backed sections report as skipped. **`--timeout <ms>`** — per-request timeout, default
-  8000 (also `RN_DEP_SCANNER_TIMEOUT_MS`). `outdated` warns when registry lookups failed instead of
+  8000 (also `RN_PREFLIGHT_TIMEOUT_MS`). `outdated` warns when registry lookups failed instead of
   silently reporting fewer updates; OSV requests retry transient failures before giving up.
 - **Exit codes.** Every command exits 1 on a fatal error (unreadable project, bad arguments).
   Beyond that:
@@ -568,10 +575,10 @@ Other behaviour worth knowing:
 - **`unused`:** packages used via `package.json` `main`, Expo config plugins, `package.json` scripts, config files, or as a peer of another dependency are listed as implicitly used instead of unused.
 - **`upgrade`:** risk accounts for how many React Native minors the jump spans and for installed packages whose rules fail at the target version, lists the reasons, and reports an Android/iOS toolchain as "not verified" when there is no `android/` or `ios/` directory.
 
-## Config file (`.rn-dep-scanner.json`)
+## Config file (`.rn-preflight.json`)
 
 An optional config file **you author** at the project root — you write and commit this; it is
-not generated by the tool (contrast with `.rn-dep-scanner-baseline.json`, above, which the tool
+not generated by the tool (contrast with `.rn-preflight-baseline.json`, above, which the tool
 generates and you don't hand-edit). Every field is optional; nothing below is a recommended
 default, each is only an example of the shape:
 
@@ -605,7 +612,7 @@ minimal, dependency-free HTML page: printed to stdout if no path is given, or wr
 file:
 
 ```bash
-npx rn-dep-scanner check --html report.html
+npx rn-preflight check --html report.html
 ```
 
 If both `--json` and `--html` are passed, `--html` wins.
