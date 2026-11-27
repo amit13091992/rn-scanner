@@ -37,7 +37,7 @@ function readEventPayload() {
 async function main() {
   const [resultPath, kind = 'doctor'] = process.argv.slice(2);
   if (!resultPath) {
-    console.error('Usage: post-pr-comment.mjs <result.json> [doctor|upgrade|size]');
+    console.error('Usage: post-pr-comment.mjs <result.json> [doctor|upgrade|size|size-baseline-missing]');
     process.exit(1);
   }
 
@@ -56,13 +56,15 @@ async function main() {
   }
 
   const result = JSON.parse(readFileSync(resultPath, 'utf8'));
-  const { formatVerdictComment, formatAggregatedVerdictComment, formatSizeComment, PR_COMMENT_MARKER, SIZE_COMMENT_MARKER } = await loadFormatter();
-  const marker = kind === 'size' ? SIZE_COMMENT_MARKER : PR_COMMENT_MARKER;
+  const { formatVerdictComment, formatAggregatedVerdictComment, formatSizeComment, formatSizeBaselineMissingComment, PR_COMMENT_MARKER, SIZE_COMMENT_MARKER } = await loadFormatter();
+  const marker = kind === 'size' || kind === 'size-baseline-missing' ? SIZE_COMMENT_MARKER : PR_COMMENT_MARKER;
 
   // A `--all-workspaces` run's result has a top-level `workspaces[]` array instead of its own
   // `verdict`/`nodeEnvironment`/etc. — same marker, so it still updates the same comment in
   // place, but rendered as one combined comment covering every workspace package.
-  const body = kind === 'size'
+  const body = kind === 'size-baseline-missing'
+    ? formatSizeBaselineMissingComment(result)
+    : kind === 'size'
     ? formatSizeComment(result)
     : Array.isArray(result.workspaces)
     ? formatAggregatedVerdictComment({
