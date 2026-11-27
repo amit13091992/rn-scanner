@@ -208,3 +208,16 @@ export function formatSizeComment(result: BundleDiffResult): string {
 
   return lines.join('\n');
 }
+
+/** Posted instead of a diff when no base snapshot could be fetched: unknown, never a pass. */
+export function formatSizeBaselineMissingComment(baseline: { status: string; reason?: string }): string {
+  const why = baseline.status === 'not-found' ? 'No baseline snapshot exists yet' : 'The baseline snapshot could not be fetched';
+  return [
+    SIZE_COMMENT_MARKER,
+    '## Bundle size',
+    '',
+    `⚪ **Not checked** — ${why}${baseline.reason ? `: ${baseline.reason}` : ''}.`,
+    '',
+    'Upload a `size measure` snapshot as a workflow artifact from a run on the base branch so PRs have something to compare against.',
+  ].join('\n');
+}

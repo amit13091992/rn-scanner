@@ -41,6 +41,16 @@ inputs:
   size-head:
     description: 'Path to the head `size measure` snapshot JSON. Enables bundle-size mode.'
     required: false
+  size-baseline-artifact:
+    description: >
+      Name of a workflow artifact holding the base `size measure` snapshot, uploaded by a run on
+      the base branch of this repository (fork runs are ignored). Used when `size-base` is not
+      set; when no usable artifact exists, a "not checked" comment is posted instead of a diff.
+      Needs `actions: read`.
+    required: false
+  size-baseline-branch:
+    description: 'Branch the baseline artifact must come from (default: the pull request base branch).'
+    required: false
   size-budget:
     description: 'Optional budget JSON path (overrides `sizeBudget` in .rn-dep-scanner.json).'
     required: false
@@ -102,13 +112,26 @@ runs:
         GITHUB_EVENT_PATH: ${{ github.event_path }}
       run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-dep-scanner-result.json "${{ steps.scan.outputs.kind }}"
 
-    - name: Run bundle size diff
-      id: size
-      if: ${{ inputs.size-head != '' }}
+    - name: Fetch size baseline
+      id: baseline
+      if: ${{ inputs.size-head != '' && inputs.size-base == '' && inputs.size-baseline-artifact != '' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        SIZE_BASE: ${{ inputs.size-base }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
+        SIZE_BASELINE_ARTIFACT: ${{ inputs.size-baseline-artifact }}
+        SIZE_BASELINE_BRANCH: ${{ inputs.size-baseline-branch }}
+      run: node "${{ github.action_path }}/scripts/fetch-size-baseline.mjs" rn-dep-scanner-size-base.json rn-dep-scanner-size-baseline.json
+
+    - name: Run bundle size diff
+      id: size
+      if: ${{ inputs.size-head != '' && (inputs.size-base != '' || steps.baseline.outputs.status == 'found') }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SIZE_BASE: ${{ inputs.size-base != '' && inputs.size-base || 'rn-dep-scanner-size-base.json' }}
         SIZE_HEAD: ${{ inputs.size-head }}
         SIZE_BUDGET: ${{ inputs.size-budget }}
       run: |
@@ -129,8 +152,18 @@ runs:
         GITHUB_EVENT_PATH: ${{ github.event_path }}
       run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-dep-scanner-size.json size
 
+    - name: Post size baseline-missing PR comment
+      if: ${{ github.event_name == 'pull_request' && steps.baseline.outputs.status != '' && steps.baseline.outputs.status != 'found' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
+      run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-dep-scanner-size-baseline.json size-baseline-missing
+
     - name: Fail when over size budget
-      if: ${{ inputs.size-head != '' && steps.size.outputs.exit != '0' }}
+      if: ${{ inputs.size-head != '' && steps.size.outcome != 'skipped' && steps.size.outputs.exit != '0' }}
       shell: bash
       run: |
         echo "::error::Bundle size is over budget or the snapshots are not comparable (see rn-dep-scanner-size.json / the PR comment)."
