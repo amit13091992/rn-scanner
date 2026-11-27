@@ -149,6 +149,10 @@ gaps —
 - **iOS**: Xcode, deployment target, CocoaPods, Ruby, Swift — and, for RN 0.88+, whether the
   UIScene lifecycle (`UIApplicationSceneManifest` in `Info.plist`) is set up, which Apple requires
   for apps built with the iOS 27 SDK / Xcode 27
+- **Swift Package Manager readiness** (RN 0.87+ CocoaPods projects, or any project already using
+  SwiftPM; informational, never affects the verdict): which installed native dependencies ship a
+  `Package.swift` and which only a podspec. It reads the files each package ships, so a manifest's
+  presence is a necessary signal, not proof that React Native's SwiftPM mode can use the module
 - **Node.js**: the running Node against the RN version's baseline; for RN 0.88+ also warns on
   odd-numbered majors and Node 24.0–24.2, which fall outside RN's supported `engines` range
 - **Android 16KB page-size alignment**: every installed dependency's prebuilt `.so` libraries
@@ -310,7 +314,20 @@ gives a `workspaces[]` array plus a combined `summary`), instead of just the one
 The "Supply-chain signals" section (informational, never affects the exit code) lists installed
 packages with install-time scripts and versions published fewer than N days ago. N is 7 by
 default; set it with `--min-release-age <days>` or `minReleaseAgeDays` in the config file (the
-flag wins), and `0` turns the release-age lookups off.
+flag wins), and `0` turns the registry lookups off.
+
+The same lookup also reports two traces of a stolen publish token, comparing each version with the
+previous stable one: a version published **without provenance** (a Sigstore attestation) when the
+previous version had it, and a version published by a **different npm account**. Both have
+innocent causes too (a maintainer changing their release process or handing a package over), so
+they are signals to look at, not verdicts; only account names are shown, never emails. Like
+release age, they are checked for direct dependencies and install-script packages only.
+
+Set `knownMalwareFeed` in the config file to a path or an `https://` URL of a JSON array of
+`{ packageName, versions, incident, summary, reference }` entries (`versions` is a list of exact
+versions or `"*"`) to have every scan flag an incident immediately, before the built-in list
+ships or an advisory reaches OSV. Hits are critical findings; a feed that cannot be read is
+reported and the built-in list still applies.
 
 ### `mcp`
 
@@ -325,13 +342,15 @@ CLI itself. Add it to your agent's MCP config, e.g. for Claude Code:
 claude mcp add rn-preflight -- npx -y rn-dep-scanner mcp
 ```
 
-Four read-only tools (nothing is installed, written or executed):
+Six read-only tools (nothing is installed, written or executed):
 
 | Tool | What it does |
 |---|---|
 | `check_package` | Before adding a dependency: does the name exist on npm (a missing name is a likely hallucinated or typo'd package), does the name closely resemble a popular package (a typosquat), is the package or version brand new, is usage implausibly low, does it run install-time scripts, is it deprecated or in a known supply-chain incident, does OSV.dev list advisories for the version. Returns `ok` / `review` / `avoid` / `unknown` plus the signals — `ok` only when every check ran. |
 | `security_scan` | Same JSON as `security --json`. |
 | `check_dependencies` | Same JSON as `check --json`. |
+| `why` | Same JSON as `why <package> --json`: every path and version a package is installed through. |
+| `upgrade_readiness` | Same JSON as `upgrade --json`; omit `to` to target the latest published React Native. |
 | `doctor` | Same JSON as `doctor --json`. |
 
 `cwd` arguments must be an existing directory. Offline, `check_package` returns `unknown` with the
@@ -359,7 +378,7 @@ npx rn-dep-scanner sbom [--vex] [--html [path]] [--cwd <path>]
 Exports a CycloneDX **1.6** Software Bill of Materials to stdout as JSON (no `--json` flag needed —
 JSON is simply the default output; pass `--html` for an HTML rendering instead). One component
 per installed package with a purl `bom-ref`, license (SPDX id, expression, or free-text name),
-dev-only marker, and — for npm lockfiles — the registry integrity hash; plus a `dependencies`
+dev-only marker, and the registry integrity hash (npm, yarn classic, pnpm and bun lockfiles); plus a `dependencies`
 section with the real edges. Scoped packages use `group` + `name` and a percent-encoded purl
 (`pkg:npm/%40scope/name@1.0.0`).
 
@@ -373,7 +392,7 @@ Validated against the official CycloneDX 1.6 JSON schema (this repo's own SBOM w
 `--vex`, plus a fixture with scoped packages and awkward licenses). A license is emitted as an
 SPDX `id` only if it is a real SPDX identifier (bundled list, matched case-insensitively);
 `BSD`, `UNLICENSED` and prose become a free-text `name`, which is what keeps the document valid.
-Limits: hashes come from `package-lock.json` only (yarn/pnpm/bun components have none), and
+Limits: yarn berry components have no hash (its `checksum` covers Yarn's own repacked archive, not the registry tarball), and
 identifiers inside a compound license expression are not individually checked.
 
 ### `renovate-config`
@@ -683,6 +702,7 @@ default, each is only an example of the shape:
 | `bannedPackages` | `policy` | Package names to fail on regardless of license or vulnerabilities (e.g. an internally-disallowed vendor SDK). |
 | `maxVulnerabilitySeverity` | `policy` | One of `"critical" \| "high" \| "moderate" \| "low"` — `policy` fails if any found vulnerability meets or exceeds this severity. |
 | `minReleaseAgeDays` | `security` | Non-negative integer (default 7): versions published fewer than this many days ago are flagged under "Supply-chain signals"; `0` disables the lookups. `--min-release-age` overrides it. |
+| `knownMalwareFeed` | `security`, `check`, `policy`, `sbom --vex`, `baseline`, `report` | Path (relative to the project) or `https://` URL of a JSON array of known-malware entries, checked alongside the built-in list. |
 | `sizeBudget` | `size diff` | Optional limits: `totalJsKb`, `totalHbcKb`, `perModuleGrowthKb` (KiB, non-negative) and `ignore` (module-id prefixes exempt from the per-module growth check). A `totalHbcKb` limit is reported "not checked" when no Hermes bytecode size was measured. |
 | `customCompatibilityRules` | `check` | Project-specific compatibility rules, same shape as the curated entries in `data/compatibility.ts` (`package`, `version` line, optional `reactNative`/`react`/`node` ranges). Checked in addition to the curated rules — for an internal fork or an unreleased dependency the curated data can't know about. |
 
