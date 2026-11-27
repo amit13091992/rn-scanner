@@ -254,13 +254,15 @@ program
 
 program
   .command('sbom')
-  .description('Export a CycloneDX Software Bill of Materials (JSON, or HTML with --html) to stdout')
+  .description('Export a CycloneDX 1.6 Software Bill of Materials (JSON, or HTML with --html) to stdout')
+  .option('--vex', 'Also embed known vulnerabilities (OSV.dev, all marked in_triage) as a CycloneDX VEX section; needs network')
   .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
   .option('--cwd <path>', 'Working directory')
   .action(async (options) => {
     await sbomCommand({
       cwd: options.cwd || process.cwd(),
       html: options.html || false,
+      vex: options.vex || false,
     });
   });
 
