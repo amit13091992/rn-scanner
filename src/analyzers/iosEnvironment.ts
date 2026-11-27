@@ -8,6 +8,7 @@ import { detectXcodeHints, detectSwiftVersionHint, detectInstalledXcodeVersion }
 import { detectDeploymentTarget } from '../detectors/ios/deploymentTarget.js';
 import { detectCocoaPodsVersion } from '../detectors/ios/cocoapods.js';
 import { detectRubyVersion } from '../detectors/ios/ruby.js';
+import { detectIosDependencyManagers } from '../detectors/ios/dependencyManager.js';
 
 function resolveStatus(
   current: string | null,
@@ -169,6 +170,28 @@ export function analyzeIosEnvironment(cwd: string, rnVersion: string): Environme
         ? undefined
         : 'Apps built with Xcode 27 / the iOS 27 SDK fail to launch without the UIScene lifecycle; move the RN entry point from AppDelegate to SceneDelegate (RN 0.88 migration).',
     });
+  }
+
+  // CocoaPods trunk goes read-only 2026-12-02, so pods published after that are SwiftPM-only.
+  // Informational (never a warning): a working CocoaPods project is not broken today.
+  if (hasIosDir && rnCoerced && gte(rnCoerced, '0.87.0')) {
+    const managers = detectIosDependencyManagers(cwd);
+    if (managers.cocoapods || managers.swiftPackageManager) {
+      const current = managers.cocoapods && managers.swiftPackageManager
+        ? 'CocoaPods + Swift Package Manager'
+        : managers.swiftPackageManager
+          ? 'Swift Package Manager'
+          : 'CocoaPods';
+      results.push({
+        name: 'iOS dependency manager',
+        current,
+        status: 'ok',
+        source: 'ios/Podfile, ios/*.xcodeproj/project.pbxproj',
+        reason: managers.swiftPackageManager
+          ? undefined
+          : 'CocoaPods trunk becomes read-only on 2026-12-02; new versions of native dependencies may ship via Swift Package Manager only. React Native has an opt-in SwiftPM mode (planned default in 0.89) — check each native module for SwiftPM support before migrating.',
+      });
+    }
   }
 
   return results;

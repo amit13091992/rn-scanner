@@ -203,3 +203,31 @@ test('analyzeIosEnvironment - RN 0.88 flags missing UIScene lifecycle, passes on
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('analyzeIosEnvironment - reports CocoaPods vs SwiftPM on RN >= 0.87 without raising a warning', () => {
+  const dir = makeTempDir();
+  try {
+    mkdirSync(join(dir, 'ios', 'App.xcodeproj'), { recursive: true });
+    writeFileSync(join(dir, 'ios', 'Podfile'), "platform :ios, '15.1'\n");
+    const pods = analyzeIosEnvironment(dir, '0.88.0').find((r) => r.name === 'iOS dependency manager');
+    assert.equal(pods?.current, 'CocoaPods');
+    assert.equal(pods?.status, 'ok');
+    assert.match(pods?.reason ?? '', /2026-12-02/);
+
+    writeFileSync(
+      join(dir, 'ios', 'App.xcodeproj', 'project.pbxproj'),
+      '/* Begin XCRemoteSwiftPackageReference section */\n'
+    );
+    const both = analyzeIosEnvironment(dir, '0.88.0').find((r) => r.name === 'iOS dependency manager');
+    assert.equal(both?.current, 'CocoaPods + Swift Package Manager');
+
+    rmSync(join(dir, 'ios', 'Podfile'));
+    const spm = analyzeIosEnvironment(dir, '0.88.0').find((r) => r.name === 'iOS dependency manager');
+    assert.equal(spm?.current, 'Swift Package Manager');
+    assert.equal(spm?.reason, undefined);
+
+    assert.equal(analyzeIosEnvironment(dir, '0.86.0').some((r) => r.name === 'iOS dependency manager'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
