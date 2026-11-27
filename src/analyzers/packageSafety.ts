@@ -2,6 +2,7 @@ import { lookupPackument, fetchWeeklyDownloads, type PackumentLookup } from '../
 import { queryVulnerabilities } from '../services/osvClient.js';
 import { matchKnownMalwarePackages } from '../data/knownMalwarePackages.js';
 import { isDeprecated } from '../data/deprecatedPackages.js';
+import { findLookalikes, type Lookalike } from './typosquat.js';
 import type { RawSecurityScanResult } from '../types/vulnerability.js';
 
 const MS_PER_DAY = 86_400_000;
@@ -9,6 +10,8 @@ const NEW_PACKAGE_DAYS = 30;
 const NEW_VERSION_DAYS = 7;
 const LOW_WEEKLY_DOWNLOADS = 100;
 const INSTALL_HOOKS = ['preinstall', 'install', 'postinstall'];
+// A typosquat has almost no organic traffic; a package this popular is not impersonating anything.
+const ESTABLISHED_WEEKLY_DOWNLOADS = 100_000;
 
 // npm's own naming rule (lowercase, URL-safe, optional @scope/). Arguments reach this function
 // from an AI agent, so anything outside it is rejected before it can shape a registry URL.
@@ -39,6 +42,8 @@ export interface PackageSafetyResult {
     weeklyDownloads: number | null;
     installHooks: string[] | null;
     vulnerabilities: Array<{ id: string; severity: string; summary: string }> | null;
+    /** Well-known packages this name resembles (empty when none) — see analyzers/typosquat.ts. */
+    lookalikes: Lookalike[];
   };
 }
 
@@ -89,6 +94,7 @@ export async function analyzePackageSafety(
       weeklyDownloads: null,
       installHooks: null,
       vulnerabilities: null,
+      lookalikes: [],
     },
   };
 
@@ -97,6 +103,9 @@ export async function analyzePackageSafety(
     result.verdict = 'avoid';
     return result;
   }
+
+  const lookalikes = findLookalikes(name);
+  result.details.lookalikes = lookalikes;
 
   const malwareByName = matchKnownMalwarePackages([{ name, version: requestedVersion ?? '' }]);
   const deprecatedEntry = isDeprecated(name);
@@ -115,11 +124,19 @@ export async function analyzePackageSafety(
       code: 'not_on_registry',
       message: 'No such package on the npm registry — likely a hallucinated or mistyped name; do not install it',
     });
+    if (lookalikes.length > 0) {
+      signals.push({
+        severity: 'info',
+        code: 'did_you_mean',
+        message: `Did you mean ${lookalikes.map((l) => l.resembles).join(' or ')}?`,
+      });
+    }
     result.verdict = 'avoid';
     return result;
   }
   if (lookup.status === 'unavailable') {
     notChecked.push('registry (could not reach npm to confirm the package exists)');
+    addLookalikeSignal(result, undefined);
     return finish(result, malwareByName);
   }
 
@@ -192,6 +209,8 @@ export async function analyzePackageSafety(
     }
   }
 
+  addLookalikeSignal(result, downloads);
+
   if (!osv.scanned) {
     notChecked.push('known vulnerabilities (OSV.dev unreachable)');
   } else {
@@ -207,6 +226,23 @@ export async function analyzePackageSafety(
   }
 
   return finish(result, matchKnownMalwarePackages([{ name, version }]));
+}
+
+/**
+ * A name resembling a well-known package is only a warning when usage doesn't already show it is
+ * established: unknown downloads keep the warning (can't rule an impersonator out), high
+ * downloads drop it (a legitimate package that merely sits near a popular name).
+ */
+function addLookalikeSignal(result: PackageSafetyResult, weeklyDownloads: number | undefined): void {
+  const { lookalikes } = result.details;
+  if (lookalikes.length === 0) return;
+  if (weeklyDownloads !== undefined && weeklyDownloads >= ESTABLISHED_WEEKLY_DOWNLOADS) return;
+  const names = lookalikes.map((l) => l.resembles).join(', ');
+  result.signals.push({
+    severity: 'warning',
+    code: 'lookalike_name',
+    message: `Name closely resembles ${names} — confirm you did not mean ${lookalikes.length === 1 ? 'it' : 'one of them'} (typosquats imitate popular names)`,
+  });
 }
 
 function finish(

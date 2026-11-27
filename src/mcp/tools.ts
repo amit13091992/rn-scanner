@@ -51,7 +51,7 @@ export function createTools(): McpTool[] {
     {
       name: 'check_package',
       description:
-        'Before adding an npm dependency, check it is safe: does the name exist on npm (a missing name is a likely hallucinated or typo\'d package), is the package or version brand new, is usage implausibly low, does it run install-time scripts, is it deprecated or in a known supply-chain incident, and does OSV.dev list advisories for the version. Returns a verdict (ok / review / avoid / unknown) with the signals behind it.',
+        'Before adding an npm dependency, check it is safe: does the name exist on npm (a missing name is a likely hallucinated or typo\'d package), does the name closely resemble a popular package (typosquat), is the package or version brand new, is usage implausibly low, does it run install-time scripts, is it deprecated or in a known supply-chain incident, and does OSV.dev list advisories for the version. Returns a verdict (ok / review / avoid / unknown) with the signals behind it.',
       inputSchema: {
         type: 'object',
         properties: {

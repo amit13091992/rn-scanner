@@ -48,6 +48,10 @@ exposes this CLI's analyses as MCP tools.
 - The tool names and the `check_package` result shape are a contract for agent configurations;
   renaming either is a breaking change.
 
+- Lookalike-name detection compares against a hand-curated list (`data/popularPackages.ts`), not a
+  download ranking, and is advisory: it warns only when real usage doesn't already show the
+  package is established. A package missing from the list is simply not checked for imitators.
+
 ## Status
 
 Accepted.
