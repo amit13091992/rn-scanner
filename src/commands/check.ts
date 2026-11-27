@@ -10,6 +10,7 @@ import { analyzeExpoCompatibility } from '../analyzers/expoCompatibility.js';
 import { analyzeExpoGoSupport } from '../analyzers/expoGoSupport.js';
 import { analyzeDependencyCompleteness } from '../analyzers/dependencyCompleteness.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
+import { analyzeSupplyChainSignals } from '../analyzers/supplyChainSignals.js';
 import { analyzeAiSdkExposure } from '../analyzers/aiSdkExposure.js';
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { loadConfig } from '../utils/config.js';
@@ -33,7 +34,7 @@ import {
   isReactNativeCompatible,
 } from '../utils/versionDetection.js';
 import { checkDeprecatedPackages } from '../data/deprecatedPackages.js';
-import { printGroupedVulnerabilities } from '../utils/securityFormat.js';
+import { printGroupedVulnerabilities, printSupplyChain } from '../utils/securityFormat.js';
 import { computeHealthScore } from '../utils/healthScore.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 import { listWorkspaceTargets, runCapturingExit } from '../utils/workspaceRun.js';
@@ -214,11 +215,21 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     );
     const requiredMissingDeps = dependencyCompleteness.missing.filter((m) => !m.optional);
     const securityEnabled = options.security !== false;
+    const scanGraph = securityEnabled ? await buildDependencyGraph(cwd) : null;
     const securityResult = securityEnabled
-      ? await profiler.time('analyzeSecurityVulnerabilities (OSV.dev network call)', async () => {
-          const graph = await buildDependencyGraph(cwd);
-          return analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
-        })
+      ? await profiler.time('analyzeSecurityVulnerabilities (OSV.dev network call)', () =>
+          analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, scanGraph, { source: config.knownMalwareFeed, cwd })
+        )
+      : null;
+    // Informational only: never feeds the health score or any exit code. Shares `security`'s
+    // switch so `--no-security` also skips these registry lookups.
+    const supplyChain = securityEnabled
+      ? await profiler.time('analyzeSupplyChainSignals (npm registry lookups)', () =>
+          analyzeSupplyChainSignals(cwd, scanGraph, {
+            ...(config.minReleaseAgeDays !== undefined ? { minReleaseAgeDays: config.minReleaseAgeDays } : {}),
+            ...(config.maxRegistryLookups !== undefined ? { maxRegistryLookups: config.maxRegistryLookups } : {}),
+          })
+        )
       : null;
     const aiSdkExposure = await profiler.time('analyzeAiSdkExposure', () =>
       analyzeAiSdkExposure(cwd, dependencies)
@@ -367,6 +378,8 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
       } else {
         printGroupedVulnerabilities(securityResult.results, { appName: typeof (packageJson as { name?: unknown }).name === 'string' ? (packageJson as { name: string }).name : 'your-app', verbose: !!options.verbose, summaryOnly: false });
       }
+
+      if (supplyChain) printSupplyChain(supplyChain);
 
       printSection('AI SDK Exposure');
       if (!aiSdkExposure.directCallWarning && aiSdkExposure.keyExposures.length === 0) {
@@ -612,6 +625,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
         ...(expoCompat.isExpoProject ? { expoGoSupport } : {}),
         dependencyCompleteness,
         aiSdkExposure,
+        ...(supplyChain ? { supplyChain } : {}),
         security: securityEnabled
           ? securityResult
           : {

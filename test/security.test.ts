@@ -204,6 +204,42 @@ test('securityCommand - --min-release-age and the config field set the supply-ch
   }
 });
 
+test('securityCommand - --max-registry-lookups and the config field cap registry lookups; the flag wins', async () => {
+  const dir = makeTempDir();
+  const restore = stubOfflineFetch();
+  try {
+    writeNestedProject(dir);
+    // fetch fails, so every attempted lookup is `lookup_failed` and the rest `lookup_cap`.
+    const attempted = async (opts: Record<string, unknown>) => {
+      const { output } = await captureStdout(() => securityCommand({ cwd: dir, json: true, failOn: 'none', ...opts }));
+      return JSON.parse(output).supplyChain.releaseAge.notChecked.lookup_failed as number;
+    };
+    assert.equal(await attempted({ maxRegistryLookups: '1' }), 1);
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ maxRegistryLookups: 2 }));
+    assert.equal(await attempted({}), 2);
+    assert.equal(await attempted({ maxRegistryLookups: 1 }), 1);
+  } finally {
+    restore();
+    cleanup(dir);
+  }
+});
+
+test('securityCommand - an invalid --max-registry-lookups is rejected before any scan runs', async () => {
+  const dir = makeTempDir();
+  const restore = stubOfflineFetch();
+  try {
+    writeNestedProject(dir);
+    for (const bad of ['abc', '0', '-1', '1.5']) {
+      const { output, exitCode } = await captureStdout(() => securityCommand({ cwd: dir, json: true, maxRegistryLookups: bad }));
+      assert.equal(exitCode, 1, `"${bad}" should exit 1`);
+      assert.match(output, /Invalid --max-registry-lookups/);
+    }
+  } finally {
+    restore();
+    cleanup(dir);
+  }
+});
+
 test('securityCommand - an invalid --min-release-age is rejected before any scan runs', async () => {
   const dir = makeTempDir();
   const restore = stubOfflineFetch();

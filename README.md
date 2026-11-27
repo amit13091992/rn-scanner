@@ -6,6 +6,7 @@ from one CLI.
 
 ## Contents
 
+- [What's new](#whats-new)
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Commands at a glance](#commands-at-a-glance)
@@ -21,6 +22,44 @@ from one CLI.
 - [Security notes](#security-notes)
 - [Known limitations](#known-limitations)
 - [Development](#development)
+
+## What's new
+
+### 1.4.0
+
+- **MCP server** (`rn-dep-scanner mcp`): lets a coding agent check things as it works, over stdio
+  with no extra dependency. Six read-only tools: `check_package` (is this package safe to add:
+  does it exist, is it a lookalike of a popular name, how new is it, install scripts, known
+  incidents, OSV advisories), `security_scan`, `check_dependencies`, `why`, `upgrade_readiness`
+  and `doctor`. See [`mcp`](#mcp).
+- **Supply-chain signals in `security`**: packages with install-time scripts, versions published
+  in the last N days (`--min-release-age`), a version published **without provenance** when the
+  previous one had it, and a version published by a **different npm account**. A
+  `knownMalwareFeed` config field lets a team add its own known-malware list. See
+  [`security`](#security).
+- **`sbom` is now CycloneDX 1.6**, validated against the official schema in CI, with package
+  URLs, dependency edges, license shapes, `--vex` (OSV findings as `in_triage`) and integrity
+  hashes for npm, yarn classic, pnpm and bun lockfiles. **Behaviour change:** scoped packages are
+  now a `group` plus `name` with a percent-encoded purl (`pkg:npm/%40scope/name`), and a license
+  that isn't a real SPDX id is emitted as a `name`, not an `id`. See [`sbom`](#sbom).
+- **`doctor`** now counts down to Google Play's 16KB page-size deadline (2027-02-01), checks the
+  AGP and NDK versions that 16KB support needs, and for RN 0.87+ reports which native
+  dependencies ship a `Package.swift` for Swift Package Manager (CocoaPods trunk goes read-only on
+  2026-12-02). Adds an estimated React Native 0.89 baseline.
+- **`size measure` / `size diff`**: bundle-size snapshots, budgets and per-module diffs, and a
+  GitHub Action mode that posts the result as a PR comment and can fetch the base snapshot from a
+  workflow artifact. See [`size measure` / `size diff`](#size-measure--size-diff).
+- **Upkeep**: a weekly workflow opens an issue when React Native or Expo ships a version the
+  built-in registries don't know about yet.
+
+### Next release
+
+- **Supply-chain checks reach transitive packages.** Registry lookups are spent on install-script
+  packages first, then direct dependencies, then the transitive packages nearest your app, under
+  a cap you can raise with `--max-registry-lookups` / `maxRegistryLookups`. A maintainer moving to
+  npm trusted publishing is no longer reported as a publisher change.
+- **`check` shows the same supply-chain section** (and a `supplyChain` key in `--json`) unless
+  `--no-security` is passed. It never affects the health score or exit code.
 
 ## Install
 
@@ -86,6 +125,7 @@ always the source of truth.
 | [`unused`](#unused) | "Which declared dependencies look unreferenced?" |
 | [`legacy-apis`](#legacy-apis) | "Am I using any removed React Native core APIs?" |
 | [`bundle`](#bundle) | "Which dependency is the heaviest on disk?" |
+| [`size measure` / `size diff`](#size-measure--size-diff) | "Did this change make my JS bundle bigger, and is it over budget?" |
 | [`architecture`](#architecture) | "New Architecture compatibility, on its own" |
 | [`native`](#native) | "Native toolchain checks, on their own" |
 | [`16kb`](#16kb) | "Android 16KB page-size alignment, on its own" |
@@ -127,6 +167,9 @@ React/React Native versions:
 - whether each installed package's own sub-dependencies are actually present and satisfied
 - known vulnerabilities (OSV.dev) across your **full transitive dependency tree**, not just
   `package.json`'s direct entries — on by default, pass `--no-security` to skip (no network call)
+- informational supply-chain signals (install scripts, very new versions, missing provenance, a
+  changed publisher) — the same section [`security`](#security) prints; also skipped by
+  `--no-security`, and never part of the health score
 
 Reports a 0–100 health score — or "insufficient data" (`healthScore: null` in `--json`) when fewer than half the dependencies have compatibility data, rather than a misleading number. `--verbose` lists every security advisory instead of one grouped block per package. `--strict` exits 1 on any error-level finding (including a
 critical/high vulnerability, or an unsupported New Architecture package once React Native's
@@ -294,7 +337,7 @@ literal is found.
 ### `security`
 
 ```bash
-npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>] [--min-release-age <days>]
+npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>] [--min-release-age <days>] [--max-registry-lookups <n>]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (the same data `check`
@@ -320,8 +363,16 @@ The same lookup also reports two traces of a stolen publish token, comparing eac
 previous stable one: a version published **without provenance** (a Sigstore attestation) when the
 previous version had it, and a version published by a **different npm account**. Both have
 innocent causes too (a maintainer changing their release process or handing a package over), so
-they are signals to look at, not verdicts; only account names are shown, never emails. Like
-release age, they are checked for direct dependencies and install-script packages only.
+they are signals to look at, not verdicts; only account names are shown, never emails. A move to
+npm trusted publishing (publisher "GitHub Actions" with provenance) is not reported, since it is a
+hardening; the reverse is.
+
+Each lookup is a full registry fetch, so they are capped (150 by default; `--max-registry-lookups`
+or `maxRegistryLookups` in the config file) and spent in priority order: install-script
+packages, direct dependencies, then transitive ones nearest the app first. Anything beyond the
+cap is reported as not checked. `check` shows the same section (and a `supplyChain` key in
+`--json`) unless `--no-security` is passed; it is informational there too and never affects the
+health score or exit code.
 
 Set `knownMalwareFeed` in the config file to a path or an `https://` URL of a JSON array of
 `{ packageName, versions, incident, summary, reference }` entries (`versions` is a list of exact
@@ -702,6 +753,7 @@ default, each is only an example of the shape:
 | `bannedPackages` | `policy` | Package names to fail on regardless of license or vulnerabilities (e.g. an internally-disallowed vendor SDK). |
 | `maxVulnerabilitySeverity` | `policy` | One of `"critical" \| "high" \| "moderate" \| "low"` — `policy` fails if any found vulnerability meets or exceeds this severity. |
 | `minReleaseAgeDays` | `security` | Non-negative integer (default 7): versions published fewer than this many days ago are flagged under "Supply-chain signals"; `0` disables the lookups. `--min-release-age` overrides it. |
+| `maxRegistryLookups` | `security`, `check` | Positive integer (default 150): cap on npm registry lookups for the supply-chain signals. `--max-registry-lookups` overrides it. |
 | `knownMalwareFeed` | `security`, `check`, `policy`, `sbom --vex`, `baseline`, `report` | Path (relative to the project) or `https://` URL of a JSON array of known-malware entries, checked alongside the built-in list. |
 | `sizeBudget` | `size diff` | Optional limits: `totalJsKb`, `totalHbcKb`, `perModuleGrowthKb` (KiB, non-negative) and `ignore` (module-id prefixes exempt from the per-module growth check). A `totalHbcKb` limit is reported "not checked" when no Hermes bytecode size was measured. |
 | `customCompatibilityRules` | `check` | Project-specific compatibility rules, same shape as the curated entries in `data/compatibility.ts` (`package`, `version` line, optional `reactNative`/`react`/`node` ranges). Checked in addition to the curated rules — for an internal fork or an unreleased dependency the curated data can't know about. |
@@ -775,6 +827,15 @@ package).
   of — OSV.dev, specifically to close the gap where a live worm-strain incident hasn't been
   given a GHSA ID yet. It is not a general malware scanner and won't catch an incident not
   already added to the list.
+- The supply-chain signals are heuristics, not verdicts: a missing provenance attestation or a
+  new publishing account has innocent causes (a changed release process, a maintainer handover).
+  Each registry lookup is a full packument fetch, so they are capped (150 by default) and anything
+  beyond the cap is reported as not checked. `knownMalwareFeed` is a mechanism for your own list,
+  not a bundled feed.
+- The Swift Package Manager check in `doctor` only sees whether a package ships a `Package.swift`;
+  it can't tell whether React Native's SwiftPM mode can actually use the module.
+- `sbom` has no hash for yarn berry components: berry's `checksum` covers Yarn's own repacked
+  archive, not the registry tarball.
 - `ai-exposure`'s API-key detection is shape-based (a regex matching what a real key looks
   like), not a real secrets scanner — it can miss a key in an unexpected format and, rarely,
   flag a random string that happens to match the shape. The AI-SDK-package list

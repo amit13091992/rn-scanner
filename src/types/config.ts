@@ -19,6 +19,8 @@ export interface RnDepScannerConfig {
   maxVulnerabilitySeverity?: 'critical' | 'high' | 'moderate' | 'low';
   /** `security`'s "published too recently" threshold in days (default 7; 0 turns the release-age lookups off). Overridden by `--min-release-age`. */
   minReleaseAgeDays?: number;
+  /** Cap on registry packument lookups for `security`'s supply-chain signals (default 150; each is a full packument fetch). Overridden by `--max-registry-lookups`. */
+  maxRegistryLookups?: number;
   /** Path (relative to the project) or https URL of a JSON array of known-malware entries (same shape as `data/knownMalwarePackages.ts`), checked alongside the built-in list — for pushing a live incident to every scan before an advisory exists. */
   knownMalwareFeed?: string;
   /** Bundle-size budget evaluated by `size diff` (KiB limits; see `types/bundleSize.ts`). */

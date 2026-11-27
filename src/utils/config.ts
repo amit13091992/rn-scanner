@@ -4,7 +4,7 @@ import type { RnDepScannerConfig } from '../types/config.js';
 import type { CompatibilityRule } from '../types/dependency.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'sizeBudget', 'minReleaseAgeDays', 'knownMalwareFeed'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'sizeBudget', 'minReleaseAgeDays', 'knownMalwareFeed', 'maxRegistryLookups'];
 const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
 export interface LoadConfigResult {
@@ -110,6 +110,15 @@ export function loadConfig(cwd: string): LoadConfigResult {
       config.minReleaseAgeDays = days;
     } else {
       warnings.push(`${CONFIG_FILENAME}: "minReleaseAgeDays" must be a non-negative integer, got ${describeType(days)} — ignoring this field`);
+    }
+  }
+
+  if ('maxRegistryLookups' in record) {
+    const n = record.maxRegistryLookups;
+    if (typeof n === 'number' && Number.isInteger(n) && n >= 1) {
+      config.maxRegistryLookups = n;
+    } else {
+      warnings.push(`${CONFIG_FILENAME}: "maxRegistryLookups" must be a positive integer, got ${describeType(n)} — ignoring this field`);
     }
   }
 

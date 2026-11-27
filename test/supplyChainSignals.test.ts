@@ -80,7 +80,7 @@ test('analyzeSupplyChainSignals - lookup cap leaves the remainder not-checked; n
   withProject(async (dir) => {
     const graph = await buildDependencyGraph(dir);
     const signals = await analyzeSupplyChainSignals(dir, graph, {
-      maxPublishLookups: 1,
+      maxRegistryLookups: 1,
       fetchVersionInfo: async (_n, v) => info(v, new Date('2020-01-01T00:00:00Z')),
     });
     assert.equal(signals.releaseAge.checked, 1);
@@ -142,4 +142,69 @@ test('analyzeSupplyChainSignals - an unrecorded publisher is never reported as a
       fetchVersionInfo: async (_n, v) => info(v, new Date('2020-01-01T00:00:00Z'), { publisher: undefined, previous: { version: '0.9.0', publisher: 'alice', hasProvenance: false } }),
     });
     assert.deepEqual(signals.publisherChanges, []);
+  }));
+
+test('analyzeSupplyChainSignals - with a cap, lookups go to install-script and direct packages before transitive ones', () =>
+  withProject(async (dir) => {
+    const graph = await buildDependencyGraph(dir);
+    const looked: string[] = [];
+    const signals = await analyzeSupplyChainSignals(dir, graph, {
+      maxRegistryLookups: 2,
+      fetchVersionInfo: async (name, version) => {
+        looked.push(name);
+        return info(version, new Date('2020-01-01T00:00:00Z'));
+      },
+    });
+    // `deep` has an install script, `direct` and `fresh` are direct; one direct package is left over.
+    assert.deepEqual(looked.sort(), ['deep', 'direct']);
+    assert.equal(signals.releaseAge.notChecked.lookup_cap, 1);
+  }));
+
+test('analyzeSupplyChainSignals - transitive packages are looked up, nearest the app first', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'supply-chain-deep-'));
+  try {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'app', dependencies: { a: '1.0.0' } }));
+    writeFileSync(
+      join(dir, 'package-lock.json'),
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'app', dependencies: { a: '1.0.0' } },
+          'node_modules/a': { version: '1.0.0', dependencies: { b: '1.0.0' } },
+          'node_modules/b': { version: '1.0.0', dependencies: { c: '1.0.0' } },
+          'node_modules/c': { version: '1.0.0' },
+        },
+      })
+    );
+    const graph = await buildDependencyGraph(dir);
+    const looked: string[] = [];
+    await analyzeSupplyChainSignals(dir, graph, {
+      fetchVersionInfo: async (name, version) => {
+        looked.push(name);
+        return info(version, new Date('2020-01-01T00:00:00Z'));
+      },
+    });
+    assert.deepEqual(looked, ['a', 'b', 'c']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('analyzeSupplyChainSignals - moving to trusted publishing (GitHub Actions + provenance) is not a publisher change, but the reverse is', () =>
+  withProject(async (dir) => {
+    const graph = await buildDependencyGraph(dir);
+    const old = new Date('2020-01-01T00:00:00Z');
+    const signals = await analyzeSupplyChainSignals(dir, graph, {
+      fetchVersionInfo: async (name, version) => {
+        if (name === 'direct') {
+          return info(version, old, { publisher: 'GitHub Actions', hasProvenance: true, previous: { version: '0.9.0', publisher: 'alice', hasProvenance: false } });
+        }
+        if (name === 'fresh') {
+          return info(version, old, { publisher: 'alice', hasProvenance: false, previous: { version: '0.9.0', publisher: 'GitHub Actions', hasProvenance: true } });
+        }
+        // "GitHub Actions" without provenance gets no pass.
+        return info(version, old, { publisher: 'GitHub Actions', hasProvenance: false, previous: { version: '0.9.0', publisher: 'alice', hasProvenance: false } });
+      },
+    });
+    assert.deepEqual(signals.publisherChanges.map((f) => f.package).sort(), ['deep', 'fresh']);
   }));

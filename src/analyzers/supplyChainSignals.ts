@@ -13,13 +13,15 @@ import type {
 } from '../types/supplyChain.js';
 
 export const DEFAULT_MIN_RELEASE_AGE_DAYS = 7;
-const DEFAULT_MAX_PUBLISH_LOOKUPS = 150;
+export const DEFAULT_MAX_REGISTRY_LOOKUPS = 150;
 const CONCURRENCY = 10;
 const MS_PER_DAY = 86_400_000;
+const TRUSTED_PUBLISHER = 'GitHub Actions';
 
 export interface SupplyChainOptions {
   minReleaseAgeDays?: number;
-  maxPublishLookups?: number;
+  /** Cap on packument fetches per scan (default 150). */
+  maxRegistryLookups?: number;
   now?: Date;
   /** Injectable for tests; defaults to the npm registry client. */
   fetchVersionInfo?: (name: string, version: string) => Promise<VersionRegistryInfo | undefined>;
@@ -33,8 +35,9 @@ export interface SupplyChainOptions {
  * maintainer account does its damage before an advisory exists), (3) a version published without
  * provenance when the previous version had it, and (4) a version published by a different npm
  * account than the previous one — both common traces of a stolen token or account. Registry facts cost a full
- * packument fetch each, so only direct dependencies and install-script packages are looked up,
- * capped; anything not looked up is reported as not-checked rather than assumed old.
+ * packument fetch each, so lookups are capped and spent in priority order (install-script
+ * packages, direct dependencies, then the shallowest transitive ones); anything not looked up is
+ * reported as not-checked rather than assumed old.
  */
 export async function analyzeSupplyChainSignals(
   cwd: string,
@@ -62,11 +65,15 @@ export async function analyzeSupplyChainSignals(
     }
   }
 
+  // With a cap on lookups, spend them install-script packages first, then direct dependencies,
+  // then transitive ones nearest the app (shortest dependency chain first).
   const scriptKeys = new Set(installScripts.map((s) => `${s.package}@${s.version}`));
-  const candidates = [
-    ...packages.filter((p) => scriptKeys.has(`${p.name}@${p.version}`)),
-    ...packages.filter((p) => p.direct && !scriptKeys.has(`${p.name}@${p.version}`)),
-  ];
+  const depth = (p: { paths: string[][] }): number => Math.min(...p.paths.map((path) => path.length));
+  const rank = (p: { name: string; version: string; direct: boolean }): number =>
+    scriptKeys.has(`${p.name}@${p.version}`) ? 0 : p.direct ? 1 : 2;
+  const candidates = [...packages].sort(
+    (a, b) => rank(a) - rank(b) || (rank(a) === 2 ? depth(a) - depth(b) : 0) || a.name.localeCompare(b.name)
+  );
 
   const notChecked: Partial<Record<ReleaseAgeNotCheckedReason, number>> = {};
   const bump = (reason: ReleaseAgeNotCheckedReason, n = 1): void => {
@@ -83,7 +90,7 @@ export async function analyzeSupplyChainSignals(
   } else if (isOffline() && !options.fetchVersionInfo) {
     bump('offline', candidates.length);
   } else {
-    const cap = options.maxPublishLookups ?? DEFAULT_MAX_PUBLISH_LOOKUPS;
+    const cap = options.maxRegistryLookups ?? DEFAULT_MAX_REGISTRY_LOOKUPS;
     const queue = candidates.slice(0, cap);
     if (candidates.length > cap) bump('lookup_cap', candidates.length - cap);
 
@@ -115,7 +122,11 @@ export async function analyzeSupplyChainSignals(
           if (previous.hasProvenance && !info.hasProvenance) {
             provenanceRegressions.push({ package: pkg.name, version: pkg.version, previousVersion: previous.version, direct: pkg.direct });
           }
-          if (info.publisher && previous.publisher && info.publisher !== previous.publisher) {
+          // npm records "GitHub Actions" as the publisher of a trusted-publishing (OIDC) release.
+          // A maintainer moving to it is a hardening, and it comes with provenance, so only the
+          // reverse (or a "GitHub Actions" publish without provenance) is worth a second look.
+          const movedToTrustedPublishing = info.publisher === TRUSTED_PUBLISHER && info.hasProvenance;
+          if (info.publisher && previous.publisher && info.publisher !== previous.publisher && !movedToTrustedPublishing) {
             publisherChanges.push({
               package: pkg.name,
               version: pkg.version,

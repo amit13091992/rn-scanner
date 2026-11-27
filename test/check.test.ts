@@ -160,6 +160,26 @@ test('checkCommand - security: false (--no-security) skips the scan and reports 
   }
 });
 
+test('checkCommand - json includes supplyChain signals (informational) unless --no-security, and never changes the exit code', async () => {
+  const dir = makeTempDir();
+  try {
+    writeProject(dir, { 'react-native': '0.75.0', react: '18.3.1' });
+
+    // fetch is stubbed to fail above, so the registry lookups are reported as not-checked, never as clean.
+    const on = await captureStdout(() => checkCommand({ cwd: dir, json: true }));
+    const result = JSON.parse(on.output);
+    assert.equal(result.supplyChain.scanned, true);
+    assert.ok(result.supplyChain.releaseAge.notChecked.lookup_failed > 0);
+    assert.deepEqual(result.supplyChain.provenanceRegressions, []);
+    assert.equal(on.exitCode, undefined);
+
+    const off = await captureStdout(() => checkCommand({ cwd: dir, json: true, security: false }));
+    assert.equal('supplyChain' in JSON.parse(off.output), false);
+  } finally {
+    cleanup(dir);
+  }
+});
+
 test('checkCommand - breakingChanges entries omit relevance (only meaningful for an upgrade transition, not a plain check)', async () => {
   const dir = makeTempDir();
   try {
