@@ -191,3 +191,21 @@ test('loadConfig - ignores a non-object sizeBudget with a warning', () => {
     cleanup(dir);
   }
 });
+
+test('loadConfig - minReleaseAgeDays accepts a non-negative integer and warns on anything else', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ minReleaseAgeDays: 0 }));
+    assert.deepEqual(loadConfig(dir), { config: { minReleaseAgeDays: 0 }, warnings: [] });
+
+    for (const bad of [-1, 1.5, '7', null]) {
+      writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ minReleaseAgeDays: bad }));
+      const { config, warnings } = loadConfig(dir);
+      assert.equal(config.minReleaseAgeDays, undefined, `${String(bad)} must be ignored`);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0]!, /minReleaseAgeDays/);
+    }
+  } finally {
+    cleanup(dir);
+  }
+});

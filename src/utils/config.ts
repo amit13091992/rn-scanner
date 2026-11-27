@@ -4,7 +4,7 @@ import type { RnDepScannerConfig } from '../types/config.js';
 import type { CompatibilityRule } from '../types/dependency.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'sizeBudget'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'sizeBudget', 'minReleaseAgeDays'];
 const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
 export interface LoadConfigResult {
@@ -101,6 +101,15 @@ export function loadConfig(cwd: string): LoadConfigResult {
       config.maxVulnerabilitySeverity = record.maxVulnerabilitySeverity as RnDepScannerConfig['maxVulnerabilitySeverity'];
     } else {
       warnings.push(`${CONFIG_FILENAME}: "maxVulnerabilitySeverity" must be one of critical/high/moderate/low, got ${describeType(record.maxVulnerabilitySeverity)} — ignoring this field`);
+    }
+  }
+
+  if ('minReleaseAgeDays' in record) {
+    const days = record.minReleaseAgeDays;
+    if (typeof days === 'number' && Number.isInteger(days) && days >= 0) {
+      config.minReleaseAgeDays = days;
+    } else {
+      warnings.push(`${CONFIG_FILENAME}: "minReleaseAgeDays" must be a non-negative integer, got ${describeType(days)} — ignoring this field`);
     }
   }
 

@@ -161,11 +161,13 @@ program
   .option('--verbose', 'List every advisory instead of one grouped block per package')
   .option('--summary', 'Only severity counts and one line per affected package')
   .option('--fail-on <severity>', 'Exit 1 when a finding at or above this severity exists: critical, high (default), moderate, low, none')
+  .option('--min-release-age <days>', 'Flag package versions published fewer than this many days ago (default 7, or minReleaseAgeDays in the config file; 0 turns the check off)')
   .action(async (options) => {
     await securityCommand({
       verbose: options.verbose || false,
       summary: options.summary || false,
       ...(options.failOn ? { failOn: options.failOn } : {}),
+      ...(options.minReleaseAge !== undefined ? { minReleaseAge: options.minReleaseAge } : {}),
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),

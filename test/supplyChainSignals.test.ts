@@ -83,3 +83,29 @@ test('analyzeSupplyChainSignals - lookup cap leaves the remainder not-checked; n
 
     assert.equal((await analyzeSupplyChainSignals(dir, null)).scanned, false);
   }));
+
+test('analyzeSupplyChainSignals - minReleaseAgeDays 0 turns release-age lookups off without reporting them as failed', () =>
+  withProject(async (dir) => {
+    const graph = await buildDependencyGraph(dir);
+    let lookups = 0;
+    const signals = await analyzeSupplyChainSignals(dir, graph, {
+      minReleaseAgeDays: 0,
+      fetchPublishTime: async () => {
+        lookups++;
+        return new Date();
+      },
+    });
+    assert.equal(lookups, 0);
+    assert.equal(signals.releaseAge.minAgeDays, 0);
+    assert.deepEqual(signals.releaseAge.notChecked, {});
+    assert.equal(signals.installScripts.length, 1, 'install-script detection is unaffected');
+  }));
+
+test('analyzeSupplyChainSignals - a larger threshold flags versions a smaller one lets through', () =>
+  withProject(async (dir) => {
+    const graph = await buildDependencyGraph(dir);
+    const fetchPublishTime = async () => new Date('2026-11-01T00:00:00Z');
+    const now = new Date('2026-11-27T00:00:00Z');
+    assert.equal((await analyzeSupplyChainSignals(dir, graph, { now, fetchPublishTime, minReleaseAgeDays: 7 })).recentlyPublished.length, 0);
+    assert.equal((await analyzeSupplyChainSignals(dir, graph, { now, fetchPublishTime, minReleaseAgeDays: 30 })).recentlyPublished.length, 3);
+  }));

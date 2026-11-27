@@ -81,14 +81,28 @@ export function createTools(): McpTool[] {
             enum: ['critical', 'high', 'moderate', 'low', 'none'],
             description: 'Lowest severity treated as failing (default high). Only affects the CLI exit code, not the returned findings.',
           },
+          minReleaseAgeDays: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Flag package versions published fewer than this many days ago (default 7; 0 turns the check off).',
+          },
         },
         additionalProperties: false,
       },
       annotations: readOnly,
       run: async (args) => {
         const cwd = resolveCwd(args);
+        const age = args.minReleaseAgeDays;
+        if (age !== undefined && !(typeof age === 'number' && Number.isInteger(age) && age >= 0)) {
+          return failure('minReleaseAgeDays must be a non-negative integer');
+        }
         return runJsonCommand(() =>
-          securityCommand({ cwd, json: true, ...(typeof args.failOn === 'string' ? { failOn: args.failOn } : {}) })
+          securityCommand({
+            cwd,
+            json: true,
+            ...(typeof args.failOn === 'string' ? { failOn: args.failOn } : {}),
+            ...(args.minReleaseAgeDays !== undefined ? { minReleaseAge: args.minReleaseAgeDays as number } : {}),
+          })
         );
       },
     },

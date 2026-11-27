@@ -173,3 +173,49 @@ test('securityCommand - --all-workspaces aggregates results across every workspa
     cleanup(root);
   }
 });
+
+function stubOfflineFetch(): () => void {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => ({ ok: false }) as Response) as typeof fetch;
+  return () => {
+    globalThis.fetch = original;
+  };
+}
+
+test('securityCommand - --min-release-age and the config field set the supply-chain threshold; the flag wins', async () => {
+  const dir = makeTempDir();
+  const restore = stubOfflineFetch();
+  try {
+    writeNestedProject(dir);
+    const ageOf = async (opts: Record<string, unknown>) => {
+      const { output } = await captureStdout(() => securityCommand({ cwd: dir, json: true, failOn: 'none', ...opts }));
+      return JSON.parse(output).supplyChain.releaseAge.minAgeDays;
+    };
+    assert.equal(await ageOf({}), 7);
+    assert.equal(await ageOf({ minReleaseAge: '14' }), 14);
+    assert.equal(await ageOf({ minReleaseAge: 0 }), 0);
+
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ minReleaseAgeDays: 30 }));
+    assert.equal(await ageOf({}), 30);
+    assert.equal(await ageOf({ minReleaseAge: '3' }), 3);
+  } finally {
+    restore();
+    cleanup(dir);
+  }
+});
+
+test('securityCommand - an invalid --min-release-age is rejected before any scan runs', async () => {
+  const dir = makeTempDir();
+  const restore = stubOfflineFetch();
+  try {
+    writeNestedProject(dir);
+    for (const bad of ['abc', '-1', '1.5', '']) {
+      const { output, exitCode } = await captureStdout(() => securityCommand({ cwd: dir, json: true, minReleaseAge: bad }));
+      assert.equal(exitCode, 1, `"${bad}" should exit 1`);
+      assert.match(output, /Invalid --min-release-age/);
+    }
+  } finally {
+    restore();
+    cleanup(dir);
+  }
+});

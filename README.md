@@ -290,7 +290,7 @@ literal is found.
 ### `security`
 
 ```bash
-npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>]
+npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>] [--min-release-age <days>]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (the same data `check`
@@ -306,6 +306,11 @@ reached at all it reports `scanned: false` instead of "no vulnerabilities". Resp
 package in the monorepo containing `--cwd` and aggregates the results into one report (`--json`
 gives a `workspaces[]` array plus a combined `summary`), instead of just the one package
 `--cwd` points at; a no-op outside a workspace.
+
+The "Supply-chain signals" section (informational, never affects the exit code) lists installed
+packages with install-time scripts and versions published fewer than N days ago. N is 7 by
+default; set it with `--min-release-age <days>` or `minReleaseAgeDays` in the config file (the
+flag wins), and `0` turns the release-age lookups off.
 
 ### `mcp`
 
@@ -644,6 +649,7 @@ default, each is only an example of the shape:
   "licenseDenylist": ["GPL-3.0-only"],
   "bannedPackages": ["some-vendor-package"],
   "maxVulnerabilitySeverity": "high",
+  "minReleaseAgeDays": 7,
   "sizeBudget": { "totalJsKb": 6000, "perModuleGrowthKb": 50, "ignore": ["node_modules/"] },
   "customCompatibilityRules": [
     { "package": "my-internal-fork", "version": "1.x", "reactNative": ">=0.75.0" }
@@ -658,6 +664,7 @@ default, each is only an example of the shape:
 | `licenseDenylist` | `licenses`, `policy` | [SPDX license identifiers](https://spdx.org/licenses/) to flag if found on any installed package. There is no built-in denylist — you decide which licenses your org disallows. License strings are matched as read from each package's own `package.json` (not normalized against the SPDX list), so use the identifier as your ecosystem's packages actually declare it. |
 | `bannedPackages` | `policy` | Package names to fail on regardless of license or vulnerabilities (e.g. an internally-disallowed vendor SDK). |
 | `maxVulnerabilitySeverity` | `policy` | One of `"critical" \| "high" \| "moderate" \| "low"` — `policy` fails if any found vulnerability meets or exceeds this severity. |
+| `minReleaseAgeDays` | `security` | Non-negative integer (default 7): versions published fewer than this many days ago are flagged under "Supply-chain signals"; `0` disables the lookups. `--min-release-age` overrides it. |
 | `sizeBudget` | `size diff` | Optional limits: `totalJsKb`, `totalHbcKb`, `perModuleGrowthKb` (KiB, non-negative) and `ignore` (module-id prefixes exempt from the per-module growth check). A `totalHbcKb` limit is reported "not checked" when no Hermes bytecode size was measured. |
 | `customCompatibilityRules` | `check` | Project-specific compatibility rules, same shape as the curated entries in `data/compatibility.ts` (`package`, `version` line, optional `reactNative`/`react`/`node` ranges). Checked in addition to the curated rules — for an internal fork or an unreleased dependency the curated data can't know about. |
 

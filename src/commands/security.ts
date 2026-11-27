@@ -8,7 +8,7 @@ import { loadConfig } from '../utils/config.js';
 import { listWorkspaceTargets } from '../utils/workspaceRun.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
-import { printGroupedVulnerabilities, meetsFailThreshold, parseFailOn, type SecurityPrintOptions } from '../utils/securityFormat.js';
+import { printGroupedVulnerabilities, meetsFailThreshold, parseFailOn, parseMinReleaseAge, type SecurityPrintOptions } from '../utils/securityFormat.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { VulnerabilitySeverity } from '../types/vulnerability.js';
@@ -32,6 +32,9 @@ export interface SecurityOptions {
   summary?: boolean;
   /** Lowest severity that makes the command exit 1 (default `high`; `none` never fails). */
   failOn?: string;
+  /** Days after which a published version no longer counts as "too recent" (default 7, or the
+   *  config's `minReleaseAgeDays`); 0 turns the release-age lookups off. */
+  minReleaseAge?: string | number;
 }
 
 function appNameOf(cwd: string): string {
@@ -55,14 +58,16 @@ const SEVERITY_ORDER = ['critical', 'high', 'moderate', 'low', 'unknown'];
 /** Runs the scan for a single project directory — no printing, no process.exit — so both the
  *  single-project and `--all-workspaces` paths share the exact same analysis. */
 async function scanOneProject(
-  cwd: string
+  cwd: string,
+  minReleaseAge?: number
 ): Promise<{ result: SecurityAnalysisResult; graph: DependencyGraph | null; supplyChain: SupplyChainSignals }> {
   const { config } = loadConfig(cwd);
   const packageJson = await readPackageJson(cwd);
   const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
   const graph = await buildDependencyGraph(cwd);
   const result = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
-  const supplyChain = await analyzeSupplyChainSignals(cwd, graph);
+  const minAgeDays = minReleaseAge ?? config.minReleaseAgeDays;
+  const supplyChain = await analyzeSupplyChainSignals(cwd, graph, minAgeDays !== undefined ? { minReleaseAgeDays: minAgeDays } : {});
   return { result, graph, supplyChain };
 }
 
@@ -133,7 +138,7 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
   const targets = listWorkspaceTargets(cwd);
   if (targets.length === 0) {
     // Not actually a workspace — --all-workspaces is a no-op, fall back to scanning cwd alone.
-    const { result, graph, supplyChain } = await scanOneProject(cwd);
+    const { result, graph, supplyChain } = await scanOneProject(cwd, parseMinReleaseAge(options.minReleaseAge));
     if (jsonMode) {
       emitStructuredOutput({ ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, supplyChain }, 'Security Scan', options);
     } else {
@@ -145,7 +150,7 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
 
   const perPackage = await Promise.all(
     targets.map(async (target) => {
-      const { result, graph, supplyChain } = await scanOneProject(target.dir);
+      const { result, graph, supplyChain } = await scanOneProject(target.dir, parseMinReleaseAge(options.minReleaseAge));
       return { package: target.name, dir: target.dir, ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, manager: graph?.manager, supplyChain };
     })
   );
@@ -189,6 +194,7 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
   let threshold: VulnerabilitySeverity | 'none';
   try {
     threshold = parseFailOn(options.failOn);
+    parseMinReleaseAge(options.minReleaseAge);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invalid --fail-on value';
     if (jsonMode) emitStructuredOutput({ error: message }, 'Security Scan', options);
@@ -205,7 +211,7 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
     if (options.allWorkspaces) {
       criticalOrHighFound = await runAcrossWorkspaces(cwd, options, jsonMode, threshold);
     } else {
-      const { result, graph, supplyChain } = await scanOneProject(cwd);
+      const { result, graph, supplyChain } = await scanOneProject(cwd, parseMinReleaseAge(options.minReleaseAge));
       if (jsonMode) {
         emitStructuredOutput(
           { ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, supplyChain },
