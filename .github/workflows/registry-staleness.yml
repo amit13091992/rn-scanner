@@ -1,0 +1,50 @@
+name: Registry staleness
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Compare registries to npm latest
+        id: check
+        continue-on-error: true
+        run: |
+          set +e
+          node scripts/check-registry-staleness.mjs > report.md
+          code=$?
+          cat report.md
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # exit 1 = stale registry (open an issue); exit 2 = could not check (fail the job)
+          [ "$code" -eq 2 ] && exit 2
+          exit 0
+
+      - name: Open or update a tracking issue
+        if: steps.check.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Registry out of date with latest react-native/expo"
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file report.md
+          else
+            gh issue create --title "$title" --body-file report.md
+          fi
