@@ -11,9 +11,9 @@ exposes this CLI's analyses as MCP tools.
 
 ## Decision
 
-- `rn-dep-scanner mcp` serves MCP over stdio (newline-delimited JSON-RPC 2.0) with four
+- `rn-dep-scanner mcp` serves MCP over stdio (newline-delimited JSON-RPC 2.0) with six
   read-only tools: `check_package` (new: pre-install safety verdict), `security_scan`,
-  `check_dependencies`, `doctor`. The last three run the existing commands in `--json` mode and
+  `check_dependencies`, `why`, `upgrade_readiness`, `doctor`. All but the first run the existing commands in `--json` mode and
   return exactly the JSON the CLI documents.
 - The protocol layer (`src/mcp/protocol.ts`) is hand-rolled: initialize, ping, tools/list,
   tools/call only. It does not use `@modelcontextprotocol/sdk`.

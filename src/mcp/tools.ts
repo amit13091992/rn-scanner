@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { checkCommand } from '../commands/check.js';
 import { securityCommand } from '../commands/security.js';
 import { doctorCommand } from '../commands/doctor.js';
+import { whyCommand } from '../commands/why.js';
+import { upgradeCommand } from '../commands/upgrade.js';
 import { analyzePackageSafety } from '../analyzers/packageSafety.js';
 import { runCapturingExit } from '../utils/workspaceRun.js';
 import type { McpTool, McpToolResult } from './protocol.js';
@@ -122,6 +124,47 @@ export function createTools(): McpTool[] {
       run: async (args) => {
         const cwd = resolveCwd(args);
         return runJsonCommand(() => checkCommand({ cwd, json: true, security: args.security !== false }));
+      },
+    },
+    {
+      name: 'why',
+      description:
+        'Explain why an npm package is installed in a React Native project: every dependency path that pulls it in and every version it resolves to. Use before removing or upgrading a package. Same JSON as `why <package> --json`.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          package: { type: 'string', description: 'npm package name, e.g. "react-native-reanimated" or "@scope/pkg"' },
+          cwd: CWD_PROPERTY,
+        },
+        required: ['package'],
+        additionalProperties: false,
+      },
+      annotations: readOnly,
+      run: async (args) => {
+        if (typeof args.package !== 'string' || !args.package.trim()) return failure('package is required and must be a non-empty string');
+        const cwd = resolveCwd(args);
+        const name = args.package;
+        return runJsonCommand(() => whyCommand(name, { cwd, json: true }));
+      },
+    },
+    {
+      name: 'upgrade_readiness',
+      description:
+        'Assess whether a React Native project is ready to upgrade to a target React Native version: breaking changes, New Architecture support, Node/Android/iOS toolchain checks, a risk level and READY/WARN/BLOCKED verdict, plus an incremental path when intermediate versions exist. Same JSON as `upgrade --json`.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Target React Native version, e.g. "0.87". Omit to use the latest published version (needs network).' },
+          cwd: CWD_PROPERTY,
+        },
+        additionalProperties: false,
+      },
+      annotations: readOnly,
+      run: async (args) => {
+        if (args.to !== undefined && (typeof args.to !== 'string' || !args.to.trim())) return failure('to must be a non-empty string');
+        const cwd = resolveCwd(args);
+        const to = typeof args.to === 'string' ? args.to : undefined;
+        return runJsonCommand(() => upgradeCommand(to, { cwd, json: true, ...(to === undefined ? { latest: true } : {}) }));
       },
     },
     {

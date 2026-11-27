@@ -69,7 +69,7 @@ test('serveStdio - handles lines split across chunks, bad JSON, and ends when in
 
 test('mcp tools - every tool is read-only and declares an object input schema', () => {
   const tools = createTools();
-  assert.deepEqual(tools.map((t) => t.name), ['check_package', 'security_scan', 'check_dependencies', 'doctor']);
+  assert.deepEqual(tools.map((t) => t.name), ['check_package', 'security_scan', 'check_dependencies', 'why', 'upgrade_readiness', 'doctor']);
   for (const t of tools) {
     assert.equal(t.annotations.readOnlyHint, true);
     assert.equal((t.inputSchema as any).type, 'object');
@@ -84,6 +84,8 @@ test('mcp tools - argument validation rejects bad cwd and bad package args witho
   assert.equal(noName.isError, true);
   const badVersion = await byName.get('check_package')!.run({ name: 'x', version: 5 });
   assert.equal(badVersion.isError, true);
+  assert.equal((await byName.get('why')!.run({})).isError, true);
+  assert.equal((await byName.get('upgrade_readiness')!.run({ to: 5 })).isError, true);
 });
 
 test('mcp tools - doctor returns the CLI JSON for a real fixture project over the handler', async () => {
@@ -92,4 +94,14 @@ test('mcp tools - doctor returns the CLI JSON for a real fixture project over th
   assert.notEqual(res.result.isError, true);
   const parsed = JSON.parse(res.result.content[0].text);
   assert.ok('pageSize16k' in parsed && 'verdict' in parsed);
+});
+
+test('mcp tools - why and upgrade_readiness return the CLI JSON for a real fixture project', async () => {
+  const handle = createMcpHandler(info, createTools());
+  const why = (await handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'why', arguments: { package: 'react-native', cwd: fixtureCwd } } })) as any;
+  assert.doesNotThrow(() => JSON.parse(why.result.content[0].text));
+  const upgrade = (await handle({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'upgrade_readiness', arguments: { to: '0.88', cwd: fixtureCwd } } })) as any;
+  assert.notEqual(upgrade.result.isError, true);
+  const parsed = JSON.parse(upgrade.result.content[0].text);
+  assert.ok('verdict' in parsed && parsed.to === '0.88');
 });
