@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DependencyGraph } from '../types/dependencyGraph.js';
+import { SPDX_LICENSE_IDS } from '../data/spdxLicenseIds.js';
 import type { CycloneDxBom, CycloneDxComponent, CycloneDxHash, CycloneDxVulnerability } from '../types/sbom.js';
 import type { PackageVulnerabilityResult } from '../types/vulnerability.js';
 
@@ -14,18 +15,21 @@ function splitName(name: string): { group?: string; name: string } {
   return scoped ? { group: scoped[1]!, name: scoped[2]! } : { name };
 }
 
+const SPDX_BY_LOWERCASE = new Map(SPDX_LICENSE_IDS.map((id) => [id.toLowerCase(), id]));
+
 /**
- * npm's free-form `license` string mapped onto CycloneDX's three shapes: a single SPDX-looking
- * token is an `id`, a compound SPDX expression (`(MIT OR Apache-2.0)`) is an `expression`, and
- * anything else (`SEE LICENSE IN ...`, `UNLICENSED`, prose) is a free-text `name` — emitting
- * those as `id` would make the document fail schema validation. Whether a token is a *valid*
- * SPDX id is not checked (no offline SPDX list); that is a known limit.
+ * npm's free-form `license` string mapped onto CycloneDX's three shapes: a token that is a real
+ * SPDX identifier (matched case-insensitively and emitted in canonical case) is an `id`, a
+ * compound SPDX expression (`(MIT OR Apache-2.0)`) is an `expression`, and anything else
+ * (`BSD`, `UNLICENSED`, `SEE LICENSE IN ...`, prose) is a free-text `name` — emitting those as
+ * `id` makes the document fail schema validation. Identifiers inside an expression are not
+ * individually checked.
  */
 export function toCycloneDxLicense(raw: string): NonNullable<CycloneDxComponent['licenses']>[number] {
   const value = raw.trim();
   if (/^\(?[A-Za-z0-9.+-]+(\s+(OR|AND|WITH)\s+[A-Za-z0-9.+-]+)+\)?$/.test(value)) return { expression: value };
-  if (/^[A-Za-z0-9.+-]+$/.test(value) && value.toUpperCase() !== 'UNLICENSED') return { license: { id: value } };
-  return { license: { name: value } };
+  const canonical = SPDX_BY_LOWERCASE.get(value.toLowerCase());
+  return canonical ? { license: { id: canonical } } : { license: { name: value } };
 }
 
 export interface SbomInput {

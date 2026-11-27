@@ -364,9 +364,12 @@ never assessed, so nothing is claimed exploitable or not-affected. If the scan c
 OSV unreachable) the command fails rather than print a VEX with an empty list that would read as
 "no known vulnerabilities". Advisories you list in `ignoreVulnerabilities` are left out.
 
-Limits: hashes come from `package-lock.json` only (yarn/pnpm/bun components have none); license
-tokens are not checked against the SPDX list; the output has not been validated against the
-official CycloneDX 1.6 JSON schema.
+Validated against the official CycloneDX 1.6 JSON schema (this repo's own SBOM with and without
+`--vex`, plus a fixture with scoped packages and awkward licenses). A license is emitted as an
+SPDX `id` only if it is a real SPDX identifier (bundled list, matched case-insensitively);
+`BSD`, `UNLICENSED` and prose become a free-text `name`, which is what keeps the document valid.
+Limits: hashes come from `package-lock.json` only (yarn/pnpm/bun components have none), and
+identifiers inside a compound license expression are not individually checked.
 
 ### `renovate-config`
 

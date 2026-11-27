@@ -185,3 +185,16 @@ test('sbomCommand --vex - refuses to emit a VEX section when the vulnerability s
     cleanup(dir);
   }
 });
+
+test('toCycloneDxLicense - only real SPDX ids become `id`; everything else stays schema-valid', async () => {
+  const { toCycloneDxLicense } = await import('../src/analyzers/sbom.js');
+  assert.deepEqual(toCycloneDxLicense('MIT'), { license: { id: 'MIT' } });
+  assert.deepEqual(toCycloneDxLicense('mit'), { license: { id: 'MIT' } }, 'canonical case');
+  assert.deepEqual(toCycloneDxLicense('Apache-2.0'), { license: { id: 'Apache-2.0' } });
+  assert.deepEqual(toCycloneDxLicense('(MIT OR Apache-2.0)'), { expression: '(MIT OR Apache-2.0)' });
+  // Regression: found by validating against the official CycloneDX 1.6 schema — `BSD` is not an
+  // SPDX id, so emitting it as `license.id` made the whole document invalid.
+  assert.deepEqual(toCycloneDxLicense('BSD'), { license: { name: 'BSD' } });
+  assert.deepEqual(toCycloneDxLicense('UNLICENSED'), { license: { name: 'UNLICENSED' } });
+  assert.deepEqual(toCycloneDxLicense('SEE LICENSE IN LICENSE.md'), { license: { name: 'SEE LICENSE IN LICENSE.md' } });
+});
