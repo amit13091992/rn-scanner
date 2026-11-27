@@ -64,3 +64,22 @@ export async function fetchAllVersions(name: string): Promise<string[] | undefin
     return undefined;
   }
 }
+
+/**
+ * When one specific version of a package was published (the full packument's `time[version]`).
+ * Uses the full packument because the abbreviated install document carries no per-version
+ * times, so it can be large — callers should limit this to packages that justify the cost.
+ * Resolves to undefined on any failure (offline, unpublished/private package, bad JSON).
+ */
+export async function fetchVersionPublishTime(name: string, version: string): Promise<Date | undefined> {
+  const response = await fetchWithTimeout(`${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}`);
+  if (!response) return undefined;
+  try {
+    const data = (await response.json()) as { time?: Record<string, string> };
+    const published = data.time?.[version];
+    const parsed = published ? new Date(published) : undefined;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
