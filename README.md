@@ -57,7 +57,7 @@ from one CLI.
 - **Upkeep**: a weekly workflow opens an issue when React Native or Expo ships a version the
   built-in registries don't know about yet.
 
-### Next release
+### 1.5.0
 
 - **Supply-chain checks reach transitive packages.** Registry lookups are spent on install-script
   packages first, then direct dependencies, then the transitive packages nearest your app, under
