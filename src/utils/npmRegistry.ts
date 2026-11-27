@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from './network.js';
+import { fetchWithTimeout, isOffline, networkTimeoutMs } from './network.js';
 
 const REGISTRY_BASE = 'https://registry.npmjs.org';
 const CONCURRENCY = 10;
@@ -79,6 +79,55 @@ export async function fetchVersionPublishTime(name: string, version: string): Pr
     const published = data.time?.[version];
     const parsed = published ? new Date(published) : undefined;
     return parsed && !Number.isNaN(parsed.getTime()) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface NpmPackument {
+  'dist-tags'?: Record<string, string>;
+  time?: Record<string, string>;
+  versions?: Record<string, { deprecated?: string; scripts?: Record<string, unknown> }>;
+}
+
+export type PackumentLookup =
+  | { status: 'found'; packument: NpmPackument }
+  | { status: 'not_found' }
+  | { status: 'unavailable' };
+
+/**
+ * Looks up a full packument and — unlike the other helpers here, which fold every failure into
+ * `undefined` — tells a registry 404 ("no such package") apart from a lookup that simply could
+ * not be completed (offline, timeout, 5xx, bad JSON). `package_safety` needs the difference: a
+ * missing package is a strong signal, an unreachable registry is no signal at all.
+ */
+export async function lookupPackument(name: string): Promise<PackumentLookup> {
+  if (isOffline()) return { status: 'unavailable' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), networkTimeoutMs());
+  try {
+    const response = await fetch(`${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}`, {
+      signal: controller.signal,
+    });
+    if (response.status === 404) return { status: 'not_found' };
+    if (!response.ok) return { status: 'unavailable' };
+    return { status: 'found', packument: (await response.json()) as NpmPackument };
+  } catch {
+    return { status: 'unavailable' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Downloads in the last week from npm's public download-count API, or undefined if unavailable. */
+export async function fetchWeeklyDownloads(name: string): Promise<number | undefined> {
+  const response = await fetchWithTimeout(
+    `https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(name).replace('%40', '@')}`
+  );
+  if (!response) return undefined;
+  try {
+    const data = (await response.json()) as { downloads?: unknown };
+    return typeof data.downloads === 'number' ? data.downloads : undefined;
   } catch {
     return undefined;
   }

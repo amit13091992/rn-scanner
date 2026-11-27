@@ -30,6 +30,7 @@ import { graphCommand } from './commands/graph.js';
 import { treeCommand } from './commands/tree.js';
 import { compareRnCommand } from './commands/compareRn.js';
 import { upgradeCommand } from './commands/upgrade.js';
+import { mcpCommand } from './commands/mcp.js';
 import { printError } from './utils/terminal.js';
 
 const require = createRequire(import.meta.url);
@@ -170,6 +171,13 @@ program
       cwd: options.cwd || process.cwd(),
       allWorkspaces: options.allWorkspaces || false,
     });
+  });
+
+program
+  .command('mcp')
+  .description('Run as an MCP server over stdio so a coding agent can call check_package, security_scan, check_dependencies and doctor')
+  .action(async () => {
+    await mcpCommand();
   });
 
 program

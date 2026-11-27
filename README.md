@@ -65,6 +65,7 @@ always the source of truth.
 | Command | What it answers |
 |---|---|
 | [`check`](#check-default-command) | "Is my project's dependency set healthy overall?" — the default command |
+| [`mcp`](#mcp) | "Can my coding agent check a package is safe before it installs it?" — runs as an MCP server |
 | [`doctor`](#doctor) | "Is my Android/iOS build toolchain actually set up correctly?" |
 | [`outdated`](#outdated) | "Which packages have newer versions available?" |
 | [`upgrade --to <version>` / `--latest`](#upgrade) | "What happens if I upgrade React Native to X, or to whatever's latest?" |
@@ -305,6 +306,31 @@ reached at all it reports `scanned: false` instead of "no vulnerabilities". Resp
 package in the monorepo containing `--cwd` and aggregates the results into one report (`--json`
 gives a `workspaces[]` array plus a combined `summary`), instead of just the one package
 `--cwd` points at; a no-op outside a workspace.
+
+### `mcp`
+
+```bash
+npx rn-dep-scanner mcp
+```
+
+Runs an [MCP](https://modelcontextprotocol.io) server over stdio so a coding agent can call this
+CLI itself. Add it to your agent's MCP config, e.g. for Claude Code:
+
+```bash
+claude mcp add rn-preflight -- npx -y rn-dep-scanner mcp
+```
+
+Four read-only tools (nothing is installed, written or executed):
+
+| Tool | What it does |
+|---|---|
+| `check_package` | Before adding a dependency: does the name exist on npm (a missing name is a likely hallucinated or typo'd package), is the package or version brand new, is usage implausibly low, does it run install-time scripts, is it deprecated or in a known supply-chain incident, does OSV.dev list advisories for the version. Returns `ok` / `review` / `avoid` / `unknown` plus the signals — `ok` only when every check ran. |
+| `security_scan` | Same JSON as `security --json`. |
+| `check_dependencies` | Same JSON as `check --json`. |
+| `doctor` | Same JSON as `doctor --json`. |
+
+`cwd` arguments must be an existing directory. Offline, `check_package` returns `unknown` with the
+lookups it could not run listed in `notChecked`, never a clean result.
 
 ### `licenses`
 
