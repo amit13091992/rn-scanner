@@ -8,7 +8,7 @@ import { loadConfig } from '../utils/config.js';
 import { listWorkspaceTargets } from '../utils/workspaceRun.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
-import { printGroupedVulnerabilities, meetsFailThreshold, parseFailOn, parseMinReleaseAge, type SecurityPrintOptions } from '../utils/securityFormat.js';
+import { printGroupedVulnerabilities, printSupplyChain, meetsFailThreshold, parseFailOn, parseMinReleaseAge, parseMaxRegistryLookups, type SecurityPrintOptions } from '../utils/securityFormat.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { VulnerabilitySeverity } from '../types/vulnerability.js';
@@ -35,6 +35,9 @@ export interface SecurityOptions {
   /** Days after which a published version no longer counts as "too recent" (default 7, or the
    *  config's `minReleaseAgeDays`); 0 turns the release-age lookups off. */
   minReleaseAge?: string | number;
+  /** Cap on registry packument lookups for the supply-chain signals (default 150; overrides the
+   *  config's `maxRegistryLookups`). */
+  maxRegistryLookups?: string | number;
 }
 
 function appNameOf(cwd: string): string {
@@ -59,7 +62,8 @@ const SEVERITY_ORDER = ['critical', 'high', 'moderate', 'low', 'unknown'];
  *  single-project and `--all-workspaces` paths share the exact same analysis. */
 async function scanOneProject(
   cwd: string,
-  minReleaseAge?: number
+  minReleaseAge?: number,
+  maxRegistryLookups?: number
 ): Promise<{ result: SecurityAnalysisResult; graph: DependencyGraph | null; supplyChain: SupplyChainSignals }> {
   const { config } = loadConfig(cwd);
   const packageJson = await readPackageJson(cwd);
@@ -67,7 +71,11 @@ async function scanOneProject(
   const graph = await buildDependencyGraph(cwd);
   const result = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
   const minAgeDays = minReleaseAge ?? config.minReleaseAgeDays;
-  const supplyChain = await analyzeSupplyChainSignals(cwd, graph, minAgeDays !== undefined ? { minReleaseAgeDays: minAgeDays } : {});
+  const maxLookups = maxRegistryLookups ?? config.maxRegistryLookups;
+  const supplyChain = await analyzeSupplyChainSignals(cwd, graph, {
+    ...(minAgeDays !== undefined ? { minReleaseAgeDays: minAgeDays } : {}),
+    ...(maxLookups !== undefined ? { maxRegistryLookups: maxLookups } : {}),
+  });
   return { result, graph, supplyChain };
 }
 
@@ -111,43 +119,6 @@ function printSecurityResult(
   printInfo(`${result.results.length} package(s) affected (${affectedDirect} direct, ${affectedTransitive} transitive)`);
 }
 
-function printSupplyChain(signals: SupplyChainSignals): void {
-  if (!signals.scanned) return;
-  const { installScripts, recentlyPublished, provenanceRegressions, publisherChanges, releaseAge } = signals;
-  const notChecked = Object.values(releaseAge.notChecked).reduce((sum, n) => sum + (n ?? 0), 0);
-  if (installScripts.length === 0 && recentlyPublished.length === 0 && provenanceRegressions.length === 0 && publisherChanges.length === 0 && notChecked === 0) return;
-
-  printSection('Supply-chain signals (informational — does not affect the exit code)');
-  if (installScripts.length > 0) {
-    printWarning(`${installScripts.length} installed package(s) declare install-time scripts (run on \`npm install\`; many are legitimate, e.g. native-binary downloaders):`);
-    installScripts.forEach((s) =>
-      console.log(`  └─ ${s.package}@${s.version} (${s.hooks.join(', ')})${s.direct ? '' : ' [transitive]'}`)
-    );
-  }
-  if (recentlyPublished.length > 0) {
-    printWarning(`${recentlyPublished.length} package version(s) were published less than ${releaseAge.minAgeDays} days ago:`);
-    recentlyPublished.forEach((r) =>
-      console.log(`  └─ ${r.package}@${r.version} (${r.ageDays} day${r.ageDays === 1 ? '' : 's'} old)${r.direct ? '' : ' [transitive]'}`)
-    );
-  }
-  if (provenanceRegressions.length > 0) {
-    printWarning(`${provenanceRegressions.length} package version(s) were published without provenance although the previous version had it (can indicate a stolen publish token; also happens when a maintainer changes their release process):`);
-    provenanceRegressions.forEach((f) =>
-      console.log(`  └─ ${f.package}@${f.version} (${f.previousVersion} had provenance)${f.direct ? '' : ' [transitive]'}`)
-    );
-  }
-  if (publisherChanges.length > 0) {
-    printWarning(`${publisherChanges.length} package version(s) were published by a different npm account than the previous version:`);
-    publisherChanges.forEach((f) =>
-      console.log(`  └─ ${f.package}@${f.version} (${f.previousPublisher} → ${f.publisher})${f.direct ? '' : ' [transitive]'}`)
-    );
-  }
-  if (notChecked > 0) {
-    const causes = Object.entries(releaseAge.notChecked).map(([reason, n]) => `${n} ${reason.replace(/_/g, ' ')}`).join(', ');
-    printInfo(`Registry signals (release age, provenance, publisher) not checked for ${notChecked} package(s) (${causes}); only direct dependencies and install-script packages are looked up.`);
-  }
-}
-
 function exceedsThreshold(result: SecurityAnalysisResult, threshold: VulnerabilitySeverity | 'none'): boolean {
   return meetsFailThreshold(result.summary, threshold);
 }
@@ -156,7 +127,7 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
   const targets = listWorkspaceTargets(cwd);
   if (targets.length === 0) {
     // Not actually a workspace — --all-workspaces is a no-op, fall back to scanning cwd alone.
-    const { result, graph, supplyChain } = await scanOneProject(cwd, parseMinReleaseAge(options.minReleaseAge));
+    const { result, graph, supplyChain } = await scanOneProject(cwd, parseMinReleaseAge(options.minReleaseAge), parseMaxRegistryLookups(options.maxRegistryLookups));
     if (jsonMode) {
       emitStructuredOutput({ ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, supplyChain }, 'Security Scan', options);
     } else {
@@ -168,7 +139,7 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
 
   const perPackage = await Promise.all(
     targets.map(async (target) => {
-      const { result, graph, supplyChain } = await scanOneProject(target.dir, parseMinReleaseAge(options.minReleaseAge));
+      const { result, graph, supplyChain } = await scanOneProject(target.dir, parseMinReleaseAge(options.minReleaseAge), parseMaxRegistryLookups(options.maxRegistryLookups));
       return { package: target.name, dir: target.dir, ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, manager: graph?.manager, supplyChain };
     })
   );
@@ -213,6 +184,7 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
   try {
     threshold = parseFailOn(options.failOn);
     parseMinReleaseAge(options.minReleaseAge);
+    parseMaxRegistryLookups(options.maxRegistryLookups);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invalid --fail-on value';
     if (jsonMode) emitStructuredOutput({ error: message }, 'Security Scan', options);
@@ -229,7 +201,7 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
     if (options.allWorkspaces) {
       criticalOrHighFound = await runAcrossWorkspaces(cwd, options, jsonMode, threshold);
     } else {
-      const { result, graph, supplyChain } = await scanOneProject(cwd, parseMinReleaseAge(options.minReleaseAge));
+      const { result, graph, supplyChain } = await scanOneProject(cwd, parseMinReleaseAge(options.minReleaseAge), parseMaxRegistryLookups(options.maxRegistryLookups));
       if (jsonMode) {
         emitStructuredOutput(
           { ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, supplyChain },

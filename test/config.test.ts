@@ -209,3 +209,19 @@ test('loadConfig - minReleaseAgeDays accepts a non-negative integer and warns on
     cleanup(dir);
   }
 });
+
+test('loadConfig - maxRegistryLookups must be a positive integer', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'config-max-'));
+  try {
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ maxRegistryLookups: 300 }));
+    assert.equal(loadConfig(dir).config.maxRegistryLookups, 300);
+    for (const bad of [0, -1, 1.5, '10']) {
+      writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ maxRegistryLookups: bad }));
+      const loaded = loadConfig(dir);
+      assert.equal(loaded.config.maxRegistryLookups, undefined);
+      assert.match(loaded.warnings.join(' '), /maxRegistryLookups/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

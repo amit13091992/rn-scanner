@@ -161,6 +161,7 @@ program
   .option('--verbose', 'List every advisory instead of one grouped block per package')
   .option('--summary', 'Only severity counts and one line per affected package')
   .option('--fail-on <severity>', 'Exit 1 when a finding at or above this severity exists: critical, high (default), moderate, low, none')
+  .option('--max-registry-lookups <n>', 'Cap on npm registry lookups for the supply-chain signals (default 150, or maxRegistryLookups in the config file)')
   .option('--min-release-age <days>', 'Flag package versions published fewer than this many days ago (default 7, or minReleaseAgeDays in the config file; 0 turns the check off)')
   .action(async (options) => {
     await securityCommand({
@@ -168,6 +169,7 @@ program
       summary: options.summary || false,
       ...(options.failOn ? { failOn: options.failOn } : {}),
       ...(options.minReleaseAge !== undefined ? { minReleaseAge: options.minReleaseAge } : {}),
+      ...(options.maxRegistryLookups !== undefined ? { maxRegistryLookups: options.maxRegistryLookups } : {}),
       json: options.json || false,
       html: options.html || false,
       cwd: options.cwd || process.cwd(),

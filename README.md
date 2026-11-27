@@ -294,7 +294,7 @@ literal is found.
 ### `security`
 
 ```bash
-npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>] [--min-release-age <days>]
+npx rn-dep-scanner security [--json] [--html [path]] [--cwd <path>] [--all-workspaces] [--verbose] [--summary] [--fail-on <severity>] [--min-release-age <days>] [--max-registry-lookups <n>]
 ```
 
 Standalone OSV.dev scan across direct **and transitive** dependencies (the same data `check`
@@ -320,8 +320,16 @@ The same lookup also reports two traces of a stolen publish token, comparing eac
 previous stable one: a version published **without provenance** (a Sigstore attestation) when the
 previous version had it, and a version published by a **different npm account**. Both have
 innocent causes too (a maintainer changing their release process or handing a package over), so
-they are signals to look at, not verdicts; only account names are shown, never emails. Like
-release age, they are checked for direct dependencies and install-script packages only.
+they are signals to look at, not verdicts; only account names are shown, never emails. A move to
+npm trusted publishing (publisher "GitHub Actions" with provenance) is not reported, since it is a
+hardening; the reverse is.
+
+Each lookup is a full registry fetch, so they are capped (150 by default; `--max-registry-lookups`
+or `maxRegistryLookups` in the config file) and spent in priority order: install-script
+packages, direct dependencies, then transitive ones nearest the app first. Anything beyond the
+cap is reported as not checked. `check` shows the same section (and a `supplyChain` key in
+`--json`) unless `--no-security` is passed; it is informational there too and never affects the
+health score or exit code.
 
 Set `knownMalwareFeed` in the config file to a path or an `https://` URL of a JSON array of
 `{ packageName, versions, incident, summary, reference }` entries (`versions` is a list of exact
@@ -702,6 +710,7 @@ default, each is only an example of the shape:
 | `bannedPackages` | `policy` | Package names to fail on regardless of license or vulnerabilities (e.g. an internally-disallowed vendor SDK). |
 | `maxVulnerabilitySeverity` | `policy` | One of `"critical" \| "high" \| "moderate" \| "low"` — `policy` fails if any found vulnerability meets or exceeds this severity. |
 | `minReleaseAgeDays` | `security` | Non-negative integer (default 7): versions published fewer than this many days ago are flagged under "Supply-chain signals"; `0` disables the lookups. `--min-release-age` overrides it. |
+| `maxRegistryLookups` | `security`, `check` | Positive integer (default 150): cap on npm registry lookups for the supply-chain signals. `--max-registry-lookups` overrides it. |
 | `knownMalwareFeed` | `security`, `check`, `policy`, `sbom --vex`, `baseline`, `report` | Path (relative to the project) or `https://` URL of a JSON array of known-malware entries, checked alongside the built-in list. |
 | `sizeBudget` | `size diff` | Optional limits: `totalJsKb`, `totalHbcKb`, `perModuleGrowthKb` (KiB, non-negative) and `ignore` (module-id prefixes exempt from the per-module growth check). A `totalHbcKb` limit is reported "not checked" when no Hermes bytecode size was measured. |
 | `customCompatibilityRules` | `check` | Project-specific compatibility rules, same shape as the curated entries in `data/compatibility.ts` (`package`, `version` line, optional `reactNative`/`react`/`node` ranges). Checked in addition to the curated rules — for an internal fork or an unreleased dependency the curated data can't know about. |

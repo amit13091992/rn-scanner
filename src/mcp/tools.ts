@@ -83,6 +83,11 @@ export function createTools(): McpTool[] {
             enum: ['critical', 'high', 'moderate', 'low', 'none'],
             description: 'Lowest severity treated as failing (default high). Only affects the CLI exit code, not the returned findings.',
           },
+          maxRegistryLookups: {
+            type: 'integer',
+            minimum: 1,
+            description: 'Cap on npm registry lookups for the supply-chain signals (default 150). Lookups go to install-script and direct packages first, then the shallowest transitive ones.',
+          },
           minReleaseAgeDays: {
             type: 'integer',
             minimum: 0,
@@ -94,6 +99,10 @@ export function createTools(): McpTool[] {
       annotations: readOnly,
       run: async (args) => {
         const cwd = resolveCwd(args);
+        const max = args.maxRegistryLookups;
+        if (max !== undefined && !(typeof max === 'number' && Number.isInteger(max) && max >= 1)) {
+          return failure('maxRegistryLookups must be a positive integer');
+        }
         const age = args.minReleaseAgeDays;
         if (age !== undefined && !(typeof age === 'number' && Number.isInteger(age) && age >= 0)) {
           return failure('minReleaseAgeDays must be a non-negative integer');
@@ -104,6 +113,7 @@ export function createTools(): McpTool[] {
             json: true,
             ...(typeof args.failOn === 'string' ? { failOn: args.failOn } : {}),
             ...(args.minReleaseAgeDays !== undefined ? { minReleaseAge: args.minReleaseAgeDays as number } : {}),
+            ...(max !== undefined ? { maxRegistryLookups: max as number } : {}),
           })
         );
       },
