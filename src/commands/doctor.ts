@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import semver from 'semver';
 import { detectReactNativeVersions } from '../detectors/reactNative.js';
 import { detectHermes } from '../detectors/hermes.js';
 import { analyzeHermes } from '../analyzers/hermes.js';
@@ -7,11 +8,14 @@ import { analyzeAndroidEnvironment } from '../analyzers/androidEnvironment.js';
 import { analyzeIosEnvironment } from '../analyzers/iosEnvironment.js';
 import { analyzeNodeEnvironment } from '../analyzers/nodeEnvironment.js';
 import { analyzePageSize } from '../analyzers/pageSize.js';
+import { analyzeSwiftPmSupport } from '../analyzers/swiftPmSupport.js';
+import { detectIosDependencyManagers } from '../detectors/ios/dependencyManager.js';
 import { analyzePageSizeBuildConfig, describePageSizeDeadline, formatPageSizeDeadline } from '../analyzers/pageSizeReadiness.js';
 import { analyzeIosPackage } from '../analyzers/iosPackage.js';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import type { PageSizeCheckResult } from '../types/pageSize.js';
+import type { SwiftPmSupportResult } from '../types/swiftPm.js';
 import { verdictFromRequirements, combineVerdicts } from '../utils/verdict.js';
 import { Profiler } from '../utils/profiler.js';
 import {
@@ -153,6 +157,19 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     const pageSizeBuildConfig = analyzePageSizeBuildConfig(cwd);
     const pageSizeDeadline = describePageSizeDeadline();
 
+    // Only relevant once CocoaPods' end of life matters (RN >= 0.87) or SwiftPM is already in use.
+    let swiftPmSupport: SwiftPmSupportResult | null = null;
+    const rnForSwiftPm = semver.coerce(rnVersionForEnv);
+    const iosManagers = detectIosDependencyManagers(cwd);
+    if ((rnForSwiftPm && semver.gte(rnForSwiftPm, '0.87.0') && iosManagers.cocoapods) || iosManagers.swiftPackageManager) {
+      try {
+        const dependencies = await getAllDependenciesWithResolution(readPackageJson(cwd), cwd);
+        swiftPmSupport = analyzeSwiftPmSupport(cwd, dependencies);
+      } catch {
+        // No readable package.json — nothing to inspect.
+      }
+    }
+
     const iosPackage = options.ipa ? analyzeIosPackage(options.ipa) : null;
 
     const verdict = combineVerdicts([
@@ -181,6 +198,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
         pageSize16k: pageSize,
         pageSize16kBuild: pageSizeBuildConfig,
         pageSize16kDeadline: pageSizeDeadline,
+        ...(swiftPmSupport ? { swiftPmSupport } : {}),
         ...(iosPackage ? { iosPackage } : {}),
         ...(options.profile ? { profile: { steps: profiler.report(), totalMs: profiler.totalMs() } } : {}),
       };
@@ -246,6 +264,21 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     }
     printEnvironmentRequirements(pageSizeBuildConfig);
     printInfo(formatPageSizeDeadline(pageSizeDeadline));
+
+    if (swiftPmSupport) {
+      const onlyPods = swiftPmSupport.packages.filter((p) => p.status === 'cocoapods-only');
+      const withManifest = swiftPmSupport.packages.length - onlyPods.length;
+      printSection('Swift Package Manager readiness (informational)');
+      if (swiftPmSupport.packages.length === 0) {
+        printInfo('No installed dependency ships iOS native code (no podspec or Package.swift found)');
+      } else {
+        printInfo(`${withManifest} of ${swiftPmSupport.packages.length} native dependenc${swiftPmSupport.packages.length === 1 ? 'y ships' : 'ies ship'} a Package.swift (presence only — RN's SwiftPM mode support is not verified)`);
+        onlyPods.forEach((p) => printWarning(`${p.package}@${p.version} ships a podspec but no Package.swift`));
+      }
+      if (swiftPmSupport.notInstalled.length > 0) {
+        printInfo(`${swiftPmSupport.notInstalled.length} dependenc${swiftPmSupport.notInstalled.length === 1 ? 'y was' : 'ies were'} not inspected (not installed at node_modules/<name>)`);
+      }
+    }
 
     if (iosPackage) {
       printSection('iOS Package (--ipa)');
