@@ -32,23 +32,28 @@ from one CLI.
   does it exist, is it a lookalike of a popular name, how new is it, install scripts, known
   incidents, OSV advisories), `security_scan`, `check_dependencies`, `why`, `upgrade_readiness`
   and `doctor`. See [`mcp`](#mcp).
+  Try it: `claude mcp add rn-preflight -- npx -y rn-dep-scanner mcp`
 - **Supply-chain signals in `security`**: packages with install-time scripts, versions published
   in the last N days (`--min-release-age`), a version published **without provenance** when the
   previous one had it, and a version published by a **different npm account**. A
   `knownMalwareFeed` config field lets a team add its own known-malware list. See
   [`security`](#security).
+  Try it: `npx rn-dep-scanner security --min-release-age 14`
 - **`sbom` is now CycloneDX 1.6**, validated against the official schema in CI, with package
   URLs, dependency edges, license shapes, `--vex` (OSV findings as `in_triage`) and integrity
   hashes for npm, yarn classic, pnpm and bun lockfiles. **Behaviour change:** scoped packages are
   now a `group` plus `name` with a percent-encoded purl (`pkg:npm/%40scope/name`), and a license
   that isn't a real SPDX id is emitted as a `name`, not an `id`. See [`sbom`](#sbom).
+  Try it: `npx rn-dep-scanner sbom --vex > sbom.json`
 - **`doctor`** now counts down to Google Play's 16KB page-size deadline (2027-02-01), checks the
   AGP and NDK versions that 16KB support needs, and for RN 0.87+ reports which native
   dependencies ship a `Package.swift` for Swift Package Manager (CocoaPods trunk goes read-only on
   2026-12-02). Adds an estimated React Native 0.89 baseline.
+  Try it: `npx rn-dep-scanner doctor` (the 16KB part alone: `npx rn-dep-scanner 16kb`)
 - **`size measure` / `size diff`**: bundle-size snapshots, budgets and per-module diffs, and a
   GitHub Action mode that posts the result as a PR comment and can fetch the base snapshot from a
   workflow artifact. See [`size measure` / `size diff`](#size-measure--size-diff).
+  Try it: `npx rn-dep-scanner size diff base.json head.json`
 - **Upkeep**: a weekly workflow opens an issue when React Native or Expo ships a version the
   built-in registries don't know about yet.
 
@@ -58,8 +63,10 @@ from one CLI.
   packages first, then direct dependencies, then the transitive packages nearest your app, under
   a cap you can raise with `--max-registry-lookups` / `maxRegistryLookups`. A maintainer moving to
   npm trusted publishing is no longer reported as a publisher change.
+  Try it: `npx rn-dep-scanner security --max-registry-lookups 300`
 - **`check` shows the same supply-chain section** (and a `supplyChain` key in `--json`) unless
   `--no-security` is passed. It never affects the health score or exit code.
+  Try it: `npx rn-dep-scanner check`
 
 ## Install
 
@@ -398,7 +405,7 @@ Six read-only tools (nothing is installed, written or executed):
 | Tool | What it does |
 |---|---|
 | `check_package` | Before adding a dependency: does the name exist on npm (a missing name is a likely hallucinated or typo'd package), does the name closely resemble a popular package (a typosquat), is the package or version brand new, is usage implausibly low, does it run install-time scripts, is it deprecated or in a known supply-chain incident, does OSV.dev list advisories for the version. Returns `ok` / `review` / `avoid` / `unknown` plus the signals — `ok` only when every check ran. |
-| `security_scan` | Same JSON as `security --json`. |
+| `security_scan` | Same JSON as `security --json`. Optional arguments: `cwd`, `failOn`, `minReleaseAgeDays`, `maxRegistryLookups`. |
 | `check_dependencies` | Same JSON as `check --json`. |
 | `why` | Same JSON as `why <package> --json`: every path and version a package is installed through. |
 | `upgrade_readiness` | Same JSON as `upgrade --json`; omit `to` to target the latest published React Native. |
@@ -470,7 +477,7 @@ npx rn-dep-scanner diff --from <dir> --to <dir> [--json] [--html [path]]
 
 `--from`/`--to` are required project directories (not lockfile paths). Compares their dependency
 graphs for added/removed/changed packages, then runs a security scan against just what
-changed — catches a PR that quietly introduces a vulnerable package. Exits 1 if either directory has no project/lockfile. No `--cwd` (the two
+changed — catches a PR that quietly introduces a vulnerable package. A `knownMalwareFeed` in the `--to` project's config file is applied to that scan. Exits 1 if either directory has no project/lockfile. No `--cwd` (the two
 directories you pass are the inputs).
 
 ### `policy`
