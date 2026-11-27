@@ -162,3 +162,32 @@ test('loadConfig - skips an invalid customCompatibilityRules entry with a warnin
     cleanup(dir);
   }
 });
+
+test('loadConfig - reads a valid sizeBudget and drops invalid fields with a warning each', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(
+      join(dir, '.rn-dep-scanner.json'),
+      JSON.stringify({ sizeBudget: { totalJsKb: 5000, totalHbcKb: -1, perModuleGrowthKb: 'big', ignore: ['node_modules/'] } }),
+    );
+    const { config, warnings } = loadConfig(dir);
+    assert.deepEqual(config.sizeBudget, { totalJsKb: 5000, ignore: ['node_modules/'] });
+    assert.equal(warnings.length, 2);
+    assert.ok(warnings.some((w) => w.includes('sizeBudget.totalHbcKb')));
+    assert.ok(warnings.some((w) => w.includes('sizeBudget.perModuleGrowthKb')));
+  } finally {
+    cleanup(dir);
+  }
+});
+
+test('loadConfig - ignores a non-object sizeBudget with a warning', () => {
+  const dir = makeTempDir();
+  try {
+    writeFileSync(join(dir, '.rn-dep-scanner.json'), JSON.stringify({ sizeBudget: [1] }));
+    const { config, warnings } = loadConfig(dir);
+    assert.equal(config.sizeBudget, undefined);
+    assert.equal(warnings.length, 1);
+  } finally {
+    cleanup(dir);
+  }
+});

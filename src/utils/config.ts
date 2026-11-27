@@ -4,7 +4,7 @@ import type { RnDepScannerConfig } from '../types/config.js';
 import type { CompatibilityRule } from '../types/dependency.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'sizeBudget'];
 const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
 export interface LoadConfigResult {
@@ -101,6 +101,27 @@ export function loadConfig(cwd: string): LoadConfigResult {
       config.maxVulnerabilitySeverity = record.maxVulnerabilitySeverity as RnDepScannerConfig['maxVulnerabilitySeverity'];
     } else {
       warnings.push(`${CONFIG_FILENAME}: "maxVulnerabilitySeverity" must be one of critical/high/moderate/low, got ${describeType(record.maxVulnerabilitySeverity)} — ignoring this field`);
+    }
+  }
+
+  if ('sizeBudget' in record) {
+    const value = record.sizeBudget;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      warnings.push(`${CONFIG_FILENAME}: "sizeBudget" must be an object, got ${describeType(value)} — ignoring this field`);
+    } else {
+      const b = value as Record<string, unknown>;
+      const budget: { totalJsKb?: number; totalHbcKb?: number; perModuleGrowthKb?: number; ignore?: string[] } = {};
+      for (const field of ['totalJsKb', 'totalHbcKb', 'perModuleGrowthKb'] as const) {
+        if (!(field in b)) continue;
+        const n = b[field];
+        if (typeof n === 'number' && Number.isFinite(n) && n >= 0) budget[field] = n;
+        else warnings.push(`${CONFIG_FILENAME}: "sizeBudget.${field}" must be a non-negative number, got ${describeType(n)} — ignoring this field`);
+      }
+      if ('ignore' in b) {
+        if (isStringArray(b.ignore)) budget.ignore = b.ignore;
+        else warnings.push(`${CONFIG_FILENAME}: "sizeBudget.ignore" must be an array of strings, got ${describeType(b.ignore)} — ignoring this field`);
+      }
+      config.sizeBudget = budget;
     }
   }
 

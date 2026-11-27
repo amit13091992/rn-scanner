@@ -19,6 +19,7 @@ import { renovateConfigCommand } from './commands/renovateConfig.js';
 import { bundleCommand } from './commands/bundle.js';
 import { policyCommand } from './commands/policy.js';
 import { baselineCommand } from './commands/baseline.js';
+import { sizeMeasureCommand, sizeDiffCommand } from './commands/size.js';
 import { reportCommand } from './commands/report.js';
 import { watchCommand } from './commands/watch.js';
 import { accessibilityCommand } from './commands/accessibility.js';
@@ -360,6 +361,54 @@ program
       html: options.html || false,
       cwd: options.cwd || process.cwd(),
       create: options.create || false,
+    });
+  });
+
+const size = program.command('size').description('Bundle size snapshots: measure a built bundle, diff two snapshots against a budget');
+
+size
+  .command('measure')
+  .description('Measure per-module sizes from an already-built bundle and its source map (builds nothing)')
+  .requiredOption('--bundle <path>', 'Built JS bundle')
+  .requiredOption('--source-map <path>', 'Source map for the bundle')
+  .option('--hbc <path>', 'Hermes bytecode file, to record its size')
+  .option('--platform <platform>', 'ios or android', 'ios')
+  .option('--out <path>', 'Write the snapshot to a file instead of stdout')
+  .option('--commit <sha>', 'Commit SHA to record')
+  .option('--metro-version <v>', 'Metro version that produced the bundle')
+  .option('--hermes-version <v>', 'Hermes version that produced the bytecode')
+  .option('--json', 'Print the snapshot JSON even when --out is given')
+  .option('--cwd <path>', 'Working directory')
+  .action((options) => {
+    sizeMeasureCommand({
+      bundle: options.bundle,
+      sourceMap: options.sourceMap,
+      platform: options.platform === 'android' ? 'android' : 'ios',
+      ...(options.hbc ? { hbc: options.hbc } : {}),
+      ...(options.out ? { out: options.out } : {}),
+      ...(options.commit ? { commit: options.commit } : {}),
+      ...(options.metroVersion ? { metroVersion: options.metroVersion } : {}),
+      ...(options.hermesVersion ? { hermesVersion: options.hermesVersion } : {}),
+      json: options.json || false,
+      cwd: options.cwd || process.cwd(),
+    });
+  });
+
+size
+  .command('diff <base> <head>')
+  .description('Diff two snapshots and check the budget (.rn-dep-scanner.json "sizeBudget" or --budget); exits 1 over budget or not comparable')
+  .option('--budget <path>', 'Budget JSON file (overrides the config file)')
+  .option('--json', 'Output as JSON')
+  .option('--html [path]', 'Output as HTML (stdout, or a file if a path is given)')
+  .option('--cwd <path>', 'Working directory')
+  .action((base, head, options) => {
+    sizeDiffCommand({
+      base,
+      head,
+      ...(options.budget ? { budget: options.budget } : {}),
+      json: options.json || false,
+      html: options.html || false,
+      cwd: options.cwd || process.cwd(),
     });
   });
 
