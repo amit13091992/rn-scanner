@@ -4,7 +4,7 @@ import type { RnDepScannerConfig } from '../types/config.js';
 import type { CompatibilityRule } from '../types/dependency.js';
 
 const CONFIG_FILENAME = '.rn-dep-scanner.json';
-const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'sizeBudget', 'minReleaseAgeDays'];
+const KNOWN_KEYS: Array<keyof RnDepScannerConfig> = ['ignorePackages', 'ignoreVulnerabilities', 'licenseDenylist', 'bannedPackages', 'maxVulnerabilitySeverity', 'customCompatibilityRules', 'sizeBudget', 'minReleaseAgeDays', 'knownMalwareFeed'];
 const VALID_SEVERITIES = new Set(['critical', 'high', 'moderate', 'low']);
 
 export interface LoadConfigResult {
@@ -110,6 +110,15 @@ export function loadConfig(cwd: string): LoadConfigResult {
       config.minReleaseAgeDays = days;
     } else {
       warnings.push(`${CONFIG_FILENAME}: "minReleaseAgeDays" must be a non-negative integer, got ${describeType(days)} — ignoring this field`);
+    }
+  }
+
+  if ('knownMalwareFeed' in record) {
+    const feed = record.knownMalwareFeed;
+    if (typeof feed === 'string' && feed.trim()) {
+      config.knownMalwareFeed = feed.trim();
+    } else {
+      warnings.push(`${CONFIG_FILENAME}: "knownMalwareFeed" must be a non-empty string (a path or https URL), got ${describeType(feed)} — ignoring this field`);
     }
   }
 

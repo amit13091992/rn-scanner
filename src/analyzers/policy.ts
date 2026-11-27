@@ -61,7 +61,7 @@ export async function evaluatePolicy(
   if (config.maxVulnerabilitySeverity) {
     rulesConfigured++;
     const threshold = SEVERITY_RANK[config.maxVulnerabilitySeverity];
-    const securityResult = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+    const securityResult = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
     if (securityResult.scanned) {
       securityResult.results.forEach((r) => {
         r.vulnerabilities.forEach((v) => {

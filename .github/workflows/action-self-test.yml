@@ -1,4 +1,4 @@
-name: Preflight Dogfood
+name: Action Self-Test
 
 # Runs this repo's own `doctor` command + PR-comment pipeline against the minimal fixture
 # project in .github/fixtures/sample-app, using the locally built dist/ (not an npm install
@@ -14,7 +14,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  dogfood:
+  self-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Run doctor against the dogfood fixture
+      - name: Run doctor against the sample fixture
         working-directory: .github/fixtures/sample-app
         run: node ../../../dist/index.js doctor --json > rn-dep-scanner-result.json
 

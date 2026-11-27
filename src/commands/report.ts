@@ -37,7 +37,7 @@ export async function reportCommand(options: ReportOptions = {}): Promise<void> 
     const deprecatedPackages = checkDeprecatedPackages(dependencies.map((d) => d.name));
     const newArch = analyzeNewArchitecture(dependencies, rnInfo.version);
     const graph = await buildDependencyGraph(cwd);
-    const security = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+    const security = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
 
     const compatible = compatibilityIssues.filter((i) => i.status === 'compatible').length;
     const warnings = compatibilityIssues.filter((i) => i.status === 'warning').length;

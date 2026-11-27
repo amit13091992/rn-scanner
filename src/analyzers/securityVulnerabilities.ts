@@ -4,9 +4,12 @@ import type { DependencyGraph } from '../types/dependencyGraph.js';
 import { collectAllPackageVersions } from '../utils/dependencyGraph.js';
 import type { PackageVulnerabilityResult, SecurityScanResult, VulnerabilitySeverity } from '../types/vulnerability.js';
 import { matchKnownMalwarePackages } from '../data/knownMalwarePackages.js';
+import { loadMalwareFeed, type MalwareFeedLoad } from '../services/malwareFeed.js';
 
 export interface SecurityAnalysisResult extends SecurityScanResult {
   summary: Record<VulnerabilitySeverity, number>;
+  /** Present only when a `knownMalwareFeed` is configured. */
+  malwareFeed?: Pick<MalwareFeedLoad, 'source' | 'skipped' | 'error'> & { entries: number };
 }
 
 /**
@@ -47,7 +50,9 @@ function resolveQueryableVersion(dep: DependencyInfo): string | null {
 export async function analyzeSecurityVulnerabilities(
   dependencies: DependencyInfo[],
   ignoreVulnerabilityIds: string[] = [],
-  graph?: DependencyGraph | null
+  graph?: DependencyGraph | null,
+  /** `knownMalwareFeed` from the config, and the directory a relative path resolves against. */
+  malwareFeed?: { source: string | undefined; cwd: string }
 ): Promise<SecurityAnalysisResult> {
   const graphVersions = graph ? collectAllPackageVersions(graph) : null;
 
@@ -86,7 +91,8 @@ export async function analyzeSecurityVulnerabilities(
   // a GHSA ID yet, so OSV wouldn't surface it even with network access. Merged into the same
   // `results` shape rather than a parallel field, so every existing consumer (check/security
   // commands, --json, baseline/policy) sees it without new wiring.
-  const malwareMatches = matchKnownMalwarePackages(packages);
+  const feed = malwareFeed?.source ? await loadMalwareFeed(malwareFeed.source, malwareFeed.cwd) : null;
+  const malwareMatches = matchKnownMalwarePackages(packages, feed?.entries ?? []);
   const resultsWithMalware: PackageVulnerabilityResult[] = [...scan.results];
   for (const match of malwareMatches) {
     const meta = metaByKey.get(`${match.package}@${match.version}`);
@@ -124,5 +130,10 @@ export async function analyzeSecurityVulnerabilities(
     }
   }
 
-  return { ...scan, results: resultsWithMalware, summary };
+  return {
+    ...scan,
+    results: resultsWithMalware,
+    summary,
+    ...(feed ? { malwareFeed: { source: feed.source, entries: feed.entries.length, skipped: feed.skipped, ...(feed.error ? { error: feed.error } : {}) } } : {}),
+  };
 }
