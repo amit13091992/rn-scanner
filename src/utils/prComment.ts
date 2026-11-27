@@ -1,5 +1,6 @@
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import type { Verdict } from '../types/verdict.js';
+import type { BundleDiffResult, ModuleDelta } from '../types/bundleSize.js';
 
 /** Marker embedded in every posted comment so a re-run updates it instead of duplicating it. */
 export const PR_COMMENT_MARKER = '<!-- rn-dep-scanner:verdict -->';
@@ -151,4 +152,59 @@ export function formatAggregatedVerdictComment(input: AggregatedVerdictCommentIn
     '',
     '<sub>Posted by [rn-dep-scanner](https://www.npmjs.com/package/rn-dep-scanner) — re-run to refresh this comment.</sub>',
   ].join('\n');
+}
+
+/** Distinct from `PR_COMMENT_MARKER` so the size comment and the verdict comment never overwrite each other. */
+export const SIZE_COMMENT_MARKER = '<!-- rn-dep-scanner:size -->';
+
+const SIZE_TABLE_ROWS = 10;
+
+function kib(bytes: number): string {
+  return `${(Math.abs(bytes) / 1024).toFixed(1)} KiB`;
+}
+
+function signedKib(bytes: number): string {
+  return `${bytes >= 0 ? '+' : '-'}${kib(bytes)}`;
+}
+
+function moduleRows(label: string, modules: readonly ModuleDelta[]): string[] {
+  return modules.slice(0, SIZE_TABLE_ROWS).map((m) => `| ${label} | \`${m.id}\` | ${signedKib(m.delta)} |`);
+}
+
+/** Renders a `size diff --json` result as the PR comment body. */
+export function formatSizeComment(result: BundleDiffResult): string {
+  const lines = [SIZE_COMMENT_MARKER, '## Bundle size', ''];
+
+  if (result.status === 'not-comparable') {
+    lines.push(`⚪ **Not comparable** — ${result.reason ?? 'unknown reason'}.`, '', 'The base was built with a different toolchain or schema, so no size comparison was made. Re-measure the base on the current toolchain.');
+    return lines.join('\n');
+  }
+
+  lines.push(result.status === 'over-budget' ? '🔴 **Over budget**' : '✅ **Within budget**', '');
+
+  if (result.totals) {
+    const { js, hbc } = result.totals;
+    lines.push('| | Base | Head | Change |', '|---|---|---|---|');
+    lines.push(`| JS bundle | ${kib(js.base)} | ${kib(js.head)} | ${signedKib(js.delta)} |`);
+    lines.push(hbc ? `| Hermes bytecode | ${kib(hbc.base)} | ${kib(hbc.head)} | ${signedKib(hbc.delta)} |` : '| Hermes bytecode | — | — | not measured on both sides |');
+    lines.push('');
+  }
+
+  if (result.violations.length > 0) {
+    lines.push('**Budget violations**');
+    for (const v of result.violations) {
+      lines.push(`- 🔴 ${v.kind}${v.module ? ` \`${v.module}\`` : ''}: ${v.actualKb.toFixed(1)} KiB (limit ${v.limitKb} KiB)`);
+    }
+    lines.push('');
+  }
+
+  const rows = [...moduleRows('added', result.added), ...moduleRows('grown', result.grown), ...moduleRows('removed', result.removed), ...moduleRows('shrunk', result.shrunk)];
+  if (rows.length > 0) {
+    lines.push('| Change | Module | Size |', '|---|---|---|', ...rows, '');
+  }
+
+  for (const w of result.warnings) lines.push(`- ⚠️ ${w}`);
+  for (const n of result.notChecked) lines.push(`- ⚪ Not checked: ${n}`);
+
+  return lines.join('\n');
 }

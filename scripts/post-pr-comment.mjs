@@ -37,7 +37,7 @@ function readEventPayload() {
 async function main() {
   const [resultPath, kind = 'doctor'] = process.argv.slice(2);
   if (!resultPath) {
-    console.error('Usage: post-pr-comment.mjs <result.json> [doctor|upgrade]');
+    console.error('Usage: post-pr-comment.mjs <result.json> [doctor|upgrade|size]');
     process.exit(1);
   }
 
@@ -56,12 +56,15 @@ async function main() {
   }
 
   const result = JSON.parse(readFileSync(resultPath, 'utf8'));
-  const { formatVerdictComment, formatAggregatedVerdictComment, PR_COMMENT_MARKER } = await loadFormatter();
+  const { formatVerdictComment, formatAggregatedVerdictComment, formatSizeComment, PR_COMMENT_MARKER, SIZE_COMMENT_MARKER } = await loadFormatter();
+  const marker = kind === 'size' ? SIZE_COMMENT_MARKER : PR_COMMENT_MARKER;
 
   // A `--all-workspaces` run's result has a top-level `workspaces[]` array instead of its own
   // `verdict`/`nodeEnvironment`/etc. — same marker, so it still updates the same comment in
   // place, but rendered as one combined comment covering every workspace package.
-  const body = Array.isArray(result.workspaces)
+  const body = kind === 'size'
+    ? formatSizeComment(result)
+    : Array.isArray(result.workspaces)
     ? formatAggregatedVerdictComment({
         kind,
         to: kind === 'upgrade' ? result.workspaces[0]?.to : undefined,
@@ -101,7 +104,7 @@ async function main() {
     throw new Error(`Failed to list PR comments: ${listRes.status} ${await listRes.text()}`);
   }
   const comments = await listRes.json();
-  const existing = comments.find((c) => typeof c.body === 'string' && c.body.includes(PR_COMMENT_MARKER));
+  const existing = comments.find((c) => typeof c.body === 'string' && c.body.includes(marker));
 
   if (existing) {
     const patchRes = await fetch(`${apiBase}/issues/comments/${existing.id}`, {

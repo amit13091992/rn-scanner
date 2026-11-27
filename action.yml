@@ -30,6 +30,20 @@ inputs:
     description: 'npm version of rn-dep-scanner to install.'
     required: false
     default: 'latest'
+  size-base:
+    description: >
+      Path to a base `size measure` snapshot JSON. Setting `size-head` switches the action to
+      bundle-size mode: it runs `size diff` instead of `doctor`/`upgrade`, posts a separate
+      size comment, and fails the job when over budget or the snapshots are not comparable.
+      Build the bundle and run `size measure` in an earlier workflow step — this action never
+      builds your app.
+    required: false
+  size-head:
+    description: 'Path to the head `size measure` snapshot JSON. Enables bundle-size mode.'
+    required: false
+  size-budget:
+    description: 'Optional budget JSON path (overrides `sizeBudget` in .rn-dep-scanner.json).'
+    required: false
   github-token:
     description: 'Token used to read/post the PR comment. Needs `pull-requests: write`.'
     required: false
@@ -49,6 +63,7 @@ runs:
 
     - name: Run preflight scan
       id: scan
+      if: ${{ inputs.size-head == '' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
@@ -78,7 +93,7 @@ runs:
         echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
 
     - name: Post PR comment
-      if: ${{ github.event_name == 'pull_request' }}
+      if: ${{ github.event_name == 'pull_request' && inputs.size-head == '' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
@@ -86,6 +101,40 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_EVENT_PATH: ${{ github.event_path }}
       run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-dep-scanner-result.json "${{ steps.scan.outputs.kind }}"
+
+    - name: Run bundle size diff
+      id: size
+      if: ${{ inputs.size-head != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SIZE_BASE: ${{ inputs.size-base }}
+        SIZE_HEAD: ${{ inputs.size-head }}
+        SIZE_BUDGET: ${{ inputs.size-budget }}
+      run: |
+        set -uo pipefail
+        BUDGET_ARGS=()
+        if [ -n "$SIZE_BUDGET" ]; then BUDGET_ARGS=(--budget "$SIZE_BUDGET"); fi
+        # Exits 1 over budget / not comparable; the comment must still be posted before failing.
+        npx rn-dep-scanner size diff "$SIZE_BASE" "$SIZE_HEAD" --json ${BUDGET_ARGS[@]+"${BUDGET_ARGS[@]}"} > rn-dep-scanner-size.json
+        echo "exit=$?" >> "$GITHUB_OUTPUT"
+
+    - name: Post size PR comment
+      if: ${{ always() && github.event_name == 'pull_request' && inputs.size-head != '' && steps.size.outcome != 'skipped' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
+      run: node "${{ github.action_path }}/scripts/post-pr-comment.mjs" rn-dep-scanner-size.json size
+
+    - name: Fail when over size budget
+      if: ${{ inputs.size-head != '' && steps.size.outputs.exit != '0' }}
+      shell: bash
+      run: |
+        echo "::error::Bundle size is over budget or the snapshots are not comparable (see rn-dep-scanner-size.json / the PR comment)."
+        exit 1
 
 # Usage:
 #

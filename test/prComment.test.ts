@@ -127,3 +127,36 @@ test('formatAggregatedVerdictComment - an upgrade heading includes the target ve
 
   assert.match(body, /Upgrade Readiness \(all workspaces\) → 0\.87/);
 });
+
+import { formatSizeComment, SIZE_COMMENT_MARKER } from '../src/utils/prComment.js';
+import { diffBundleSnapshots } from '../src/analyzers/bundleSizeDiff.js';
+import { BUNDLE_SNAPSHOT_SCHEMA_VERSION, type BundleSnapshot } from '../src/types/bundleSize.js';
+
+function sizeSnap(modules: { id: string; bytes: number }[], metro: string | null = '0.83.0'): BundleSnapshot {
+  return {
+    schemaVersion: BUNDLE_SNAPSHOT_SCHEMA_VERSION,
+    platform: 'ios',
+    commitSha: null,
+    toolchain: { metroVersion: metro, hermesVersion: null },
+    totals: { jsBytes: modules.reduce((n, m) => n + m.bytes, 0), hbcBytes: null, unmappedBytes: 0 },
+    modules,
+  };
+}
+
+test('formatSizeComment - over budget shows violation, table, and its own marker', () => {
+  const diff = diffBundleSnapshots(sizeSnap([]), sizeSnap([{ id: 'node_modules/big/i.js', bytes: 500 * 1024 }]), { perModuleGrowthKb: 100 });
+  const body = formatSizeComment(diff);
+  assert.ok(body.includes(SIZE_COMMENT_MARKER));
+  assert.ok(!body.includes(PR_COMMENT_MARKER));
+  assert.match(body, /Over budget/);
+  assert.match(body, /node_modules\/big\/i\.js/);
+  assert.match(body, /\+500\.0 KiB/);
+  assert.match(body, /not measured on both sides/);
+});
+
+test('formatSizeComment - not-comparable explains why instead of showing numbers', () => {
+  const body = formatSizeComment(diffBundleSnapshots(sizeSnap([], '0.83.0'), sizeSnap([], '0.84.0')));
+  assert.match(body, /Not comparable/);
+  assert.match(body, /Metro version differs/);
+  assert.ok(!body.includes('| JS bundle'));
+});
