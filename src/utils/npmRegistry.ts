@@ -1,3 +1,4 @@
+import semver from 'semver';
 import { fetchWithTimeout, isOffline, networkTimeoutMs } from './network.js';
 
 const REGISTRY_BASE = 'https://registry.npmjs.org';
@@ -128,6 +129,60 @@ export async function fetchWeeklyDownloads(name: string): Promise<number | undef
   try {
     const data = (await response.json()) as { downloads?: unknown };
     return typeof data.downloads === 'number' ? data.downloads : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface PublishedVersionFacts {
+  version: string;
+  /** npm account that published this version (`_npmUser.name`); undefined when not recorded. */
+  publisher: string | undefined;
+  /** Whether the version carries a Sigstore provenance attestation (`dist.attestations`). */
+  hasProvenance: boolean;
+}
+
+export interface VersionRegistryInfo extends PublishedVersionFacts {
+  publishedAt: Date | undefined;
+  /** Highest earlier stable version, for comparing who published it and whether it had provenance. */
+  previous: PublishedVersionFacts | undefined;
+}
+
+type PackumentVersionEntry = { _npmUser?: { name?: string }; dist?: { attestations?: unknown } };
+
+function factsOf(version: string, entry: PackumentVersionEntry | undefined): PublishedVersionFacts {
+  return {
+    version,
+    publisher: typeof entry?._npmUser?.name === 'string' ? entry._npmUser.name : undefined,
+    hasProvenance: entry?.dist?.attestations !== undefined && entry.dist.attestations !== null,
+  };
+}
+
+/**
+ * Registry facts about one version — publish time, publishing account, provenance — and the same
+ * for the highest earlier stable version, from a single packument fetch. Resolves to undefined
+ * when the packument or the version cannot be read (never a guessed "no provenance").
+ */
+export async function fetchVersionRegistryInfo(name: string, version: string): Promise<VersionRegistryInfo | undefined> {
+  const response = await fetchWithTimeout(`${REGISTRY_BASE}/${encodeURIComponent(name).replace('%40', '@')}`);
+  if (!response) return undefined;
+  try {
+    const data = (await response.json()) as { time?: Record<string, string>; versions?: Record<string, PackumentVersionEntry> };
+    const entry = data.versions?.[version];
+    if (!entry) return undefined;
+
+    const published = data.time?.[version];
+    const parsed = published ? new Date(published) : undefined;
+
+    const earlier = Object.keys(data.versions ?? {})
+      .filter((v) => semver.valid(v) && !semver.prerelease(v) && semver.lt(v, version))
+      .sort(semver.rcompare)[0];
+
+    return {
+      ...factsOf(version, entry),
+      publishedAt: parsed && !Number.isNaN(parsed.getTime()) ? parsed : undefined,
+      previous: earlier ? factsOf(earlier, data.versions?.[earlier]) : undefined,
+    };
   } catch {
     return undefined;
   }

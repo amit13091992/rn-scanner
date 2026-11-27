@@ -33,7 +33,7 @@ export async function baselineCommand(options: BaselineOptions = {}): Promise<vo
     const packageJson = await readPackageJson(cwd);
     const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
     const graph = await buildDependencyGraph(cwd);
-    const securityResult = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+    const securityResult = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
     const baselinePath = join(cwd, BASELINE_FILENAME);
 
     const appName = packageJson.name || basename(cwd);

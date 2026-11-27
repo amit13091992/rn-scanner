@@ -14,6 +14,24 @@ export interface RecentlyPublishedFinding {
   direct: boolean;
 }
 
+export interface ProvenanceRegressionFinding {
+  package: string;
+  version: string;
+  /** The earlier version that did carry a provenance attestation. */
+  previousVersion: string;
+  direct: boolean;
+}
+
+export interface PublisherChangeFinding {
+  package: string;
+  version: string;
+  previousVersion: string;
+  /** npm account names only. */
+  publisher: string;
+  previousPublisher: string;
+  direct: boolean;
+}
+
 export type ReleaseAgeNotCheckedReason = 'offline' | 'lookup_failed' | 'lookup_cap';
 
 export interface SupplyChainSignals {
@@ -21,6 +39,10 @@ export interface SupplyChainSignals {
   scanned: boolean;
   installScripts: InstallScriptFinding[];
   recentlyPublished: RecentlyPublishedFinding[];
+  /** Versions published without provenance although the previous version had it. */
+  provenanceRegressions: ProvenanceRegressionFinding[];
+  /** Versions published by a different npm account than the previous version. */
+  publisherChanges: PublisherChangeFinding[];
   releaseAge: {
     minAgeDays: number;
     checked: number;

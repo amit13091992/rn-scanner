@@ -1,10 +1,12 @@
 import { readInstallScriptHooks } from '../detectors/installScripts.js';
-import { fetchVersionPublishTime } from '../utils/npmRegistry.js';
+import { fetchVersionRegistryInfo, type VersionRegistryInfo } from '../utils/npmRegistry.js';
 import { collectAllPackageVersions } from '../utils/dependencyGraph.js';
 import { isOffline } from '../utils/network.js';
 import type { DependencyGraph } from '../types/dependencyGraph.js';
 import type {
   InstallScriptFinding,
+  ProvenanceRegressionFinding,
+  PublisherChangeFinding,
   RecentlyPublishedFinding,
   ReleaseAgeNotCheckedReason,
   SupplyChainSignals,
@@ -20,7 +22,7 @@ export interface SupplyChainOptions {
   maxPublishLookups?: number;
   now?: Date;
   /** Injectable for tests; defaults to the npm registry client. */
-  fetchPublishTime?: (name: string, version: string) => Promise<Date | undefined>;
+  fetchVersionInfo?: (name: string, version: string) => Promise<VersionRegistryInfo | undefined>;
 }
 
 /**
@@ -28,7 +30,9 @@ export interface SupplyChainOptions {
  * verdicts: (1) packages declaring install-time lifecycle hooks (the mechanism npm worms run
  * on `npm install`; many legitimate packages have one, e.g. native-binary downloaders), and
  * (2) package versions published within the last N days (fresh versions are where a hijacked
- * maintainer account does its damage before an advisory exists). Publish times cost a full
+ * maintainer account does its damage before an advisory exists), (3) a version published without
+ * provenance when the previous version had it, and (4) a version published by a different npm
+ * account than the previous one — both common traces of a stolen token or account. Registry facts cost a full
  * packument fetch each, so only direct dependencies and install-script packages are looked up,
  * capped; anything not looked up is reported as not-checked rather than assumed old.
  */
@@ -42,6 +46,8 @@ export async function analyzeSupplyChainSignals(
     scanned: false,
     installScripts: [],
     recentlyPublished: [],
+    provenanceRegressions: [],
+    publisherChanges: [],
     releaseAge: { minAgeDays, checked: 0, notChecked: {} },
   };
   if (!graph) return empty;
@@ -68,37 +74,57 @@ export async function analyzeSupplyChainSignals(
   };
 
   const recentlyPublished: RecentlyPublishedFinding[] = [];
+  const provenanceRegressions: ProvenanceRegressionFinding[] = [];
+  const publisherChanges: PublisherChangeFinding[] = [];
   let checked = 0;
 
   if (minAgeDays === 0) {
     // Turned off by the user — not a failed check, so nothing is reported as not-checked.
-  } else if (isOffline() && !options.fetchPublishTime) {
+  } else if (isOffline() && !options.fetchVersionInfo) {
     bump('offline', candidates.length);
   } else {
     const cap = options.maxPublishLookups ?? DEFAULT_MAX_PUBLISH_LOOKUPS;
     const queue = candidates.slice(0, cap);
     if (candidates.length > cap) bump('lookup_cap', candidates.length - cap);
 
-    const lookup = options.fetchPublishTime ?? fetchVersionPublishTime;
+    const lookup = options.fetchVersionInfo ?? fetchVersionRegistryInfo;
     const nowMs = (options.now ?? new Date()).getTime();
 
     const worker = async (): Promise<void> => {
       for (let pkg = queue.shift(); pkg; pkg = queue.shift()) {
-        const published = await lookup(pkg.name, pkg.version);
-        if (!published) {
+        const info = await lookup(pkg.name, pkg.version);
+        if (!info) {
           bump('lookup_failed');
           continue;
         }
         checked++;
-        const ageDays = Math.floor((nowMs - published.getTime()) / MS_PER_DAY);
-        if (ageDays < minAgeDays) {
-          recentlyPublished.push({
-            package: pkg.name,
-            version: pkg.version,
-            publishedAt: published.toISOString(),
-            ageDays: Math.max(ageDays, 0),
-            direct: pkg.direct,
-          });
+        if (info.publishedAt) {
+          const ageDays = Math.floor((nowMs - info.publishedAt.getTime()) / MS_PER_DAY);
+          if (ageDays < minAgeDays) {
+            recentlyPublished.push({
+              package: pkg.name,
+              version: pkg.version,
+              publishedAt: info.publishedAt.toISOString(),
+              ageDays: Math.max(ageDays, 0),
+              direct: pkg.direct,
+            });
+          }
+        }
+        const { previous } = info;
+        if (previous) {
+          if (previous.hasProvenance && !info.hasProvenance) {
+            provenanceRegressions.push({ package: pkg.name, version: pkg.version, previousVersion: previous.version, direct: pkg.direct });
+          }
+          if (info.publisher && previous.publisher && info.publisher !== previous.publisher) {
+            publisherChanges.push({
+              package: pkg.name,
+              version: pkg.version,
+              previousVersion: previous.version,
+              publisher: info.publisher,
+              previousPublisher: previous.publisher,
+              direct: pkg.direct,
+            });
+          }
         }
       }
     };
@@ -110,6 +136,8 @@ export async function analyzeSupplyChainSignals(
     scanned: true,
     installScripts: installScripts.sort(byName),
     recentlyPublished: recentlyPublished.sort(byName),
+    provenanceRegressions: provenanceRegressions.sort(byName),
+    publisherChanges: publisherChanges.sort(byName),
     releaseAge: { minAgeDays, checked, notChecked },
   };
 }

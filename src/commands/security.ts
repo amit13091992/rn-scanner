@@ -65,7 +65,7 @@ async function scanOneProject(
   const packageJson = await readPackageJson(cwd);
   const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
   const graph = await buildDependencyGraph(cwd);
-  const result = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+  const result = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
   const minAgeDays = minReleaseAge ?? config.minReleaseAgeDays;
   const supplyChain = await analyzeSupplyChainSignals(cwd, graph, minAgeDays !== undefined ? { minReleaseAgeDays: minAgeDays } : {});
   return { result, graph, supplyChain };
@@ -80,6 +80,12 @@ function printSecurityResult(
     printWarning(
       `Dependency hierarchy for "${graphInfo.manager}" is direct-only (not fully resolved); transitive coverage may be incomplete.`
     );
+  }
+
+  if (result.malwareFeed?.error) {
+    printWarning(`Known-malware feed "${result.malwareFeed.source}" was not applied: ${result.malwareFeed.error}. Only the built-in list was checked.`);
+  } else if (result.malwareFeed && result.malwareFeed.skipped > 0) {
+    printWarning(`Known-malware feed "${result.malwareFeed.source}": ${result.malwareFeed.skipped} malformed entr${result.malwareFeed.skipped === 1 ? 'y was' : 'ies were'} ignored.`);
   }
 
   if (!result.scanned) {
@@ -107,9 +113,9 @@ function printSecurityResult(
 
 function printSupplyChain(signals: SupplyChainSignals): void {
   if (!signals.scanned) return;
-  const { installScripts, recentlyPublished, releaseAge } = signals;
+  const { installScripts, recentlyPublished, provenanceRegressions, publisherChanges, releaseAge } = signals;
   const notChecked = Object.values(releaseAge.notChecked).reduce((sum, n) => sum + (n ?? 0), 0);
-  if (installScripts.length === 0 && recentlyPublished.length === 0 && notChecked === 0) return;
+  if (installScripts.length === 0 && recentlyPublished.length === 0 && provenanceRegressions.length === 0 && publisherChanges.length === 0 && notChecked === 0) return;
 
   printSection('Supply-chain signals (informational — does not affect the exit code)');
   if (installScripts.length > 0) {
@@ -124,9 +130,21 @@ function printSupplyChain(signals: SupplyChainSignals): void {
       console.log(`  └─ ${r.package}@${r.version} (${r.ageDays} day${r.ageDays === 1 ? '' : 's'} old)${r.direct ? '' : ' [transitive]'}`)
     );
   }
+  if (provenanceRegressions.length > 0) {
+    printWarning(`${provenanceRegressions.length} package version(s) were published without provenance although the previous version had it (can indicate a stolen publish token; also happens when a maintainer changes their release process):`);
+    provenanceRegressions.forEach((f) =>
+      console.log(`  └─ ${f.package}@${f.version} (${f.previousVersion} had provenance)${f.direct ? '' : ' [transitive]'}`)
+    );
+  }
+  if (publisherChanges.length > 0) {
+    printWarning(`${publisherChanges.length} package version(s) were published by a different npm account than the previous version:`);
+    publisherChanges.forEach((f) =>
+      console.log(`  └─ ${f.package}@${f.version} (${f.previousPublisher} → ${f.publisher})${f.direct ? '' : ' [transitive]'}`)
+    );
+  }
   if (notChecked > 0) {
     const causes = Object.entries(releaseAge.notChecked).map(([reason, n]) => `${n} ${reason.replace(/_/g, ' ')}`).join(', ');
-    printInfo(`Release age not checked for ${notChecked} package(s) (${causes}); only direct dependencies and install-script packages are looked up.`);
+    printInfo(`Registry signals (release age, provenance, publisher) not checked for ${notChecked} package(s) (${causes}); only direct dependencies and install-script packages are looked up.`);
   }
 }
 

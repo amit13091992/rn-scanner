@@ -6,6 +6,11 @@ import { join } from 'node:path';
 import { readInstallScriptHooks } from '../src/detectors/installScripts.js';
 import { analyzeSupplyChainSignals } from '../src/analyzers/supplyChainSignals.js';
 import { buildDependencyGraph } from '../src/utils/dependencyGraph.js';
+import type { VersionRegistryInfo } from '../src/utils/npmRegistry.js';
+
+function info(version: string, publishedAt: Date | undefined, over: Partial<VersionRegistryInfo> = {}): VersionRegistryInfo {
+  return { version, publishedAt, publisher: 'alice', hasProvenance: false, previous: undefined, ...over };
+}
 
 function withProject(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'supply-chain-'));
@@ -50,9 +55,9 @@ test('analyzeSupplyChainSignals - flags a transitive install script and a versio
     };
     const signals = await analyzeSupplyChainSignals(dir, graph, {
       now,
-      fetchPublishTime: async (name, version) => {
+      fetchVersionInfo: async (name, version) => {
         const v = published[`${name}@${version}`];
-        return v ? new Date(v) : undefined;
+        return v ? info(version, new Date(v)) : undefined;
       },
     });
 
@@ -65,7 +70,7 @@ test('analyzeSupplyChainSignals - flags a transitive install script and a versio
 test('analyzeSupplyChainSignals - a failed publish-time lookup is not-checked, never assumed old or new', () =>
   withProject(async (dir) => {
     const graph = await buildDependencyGraph(dir);
-    const signals = await analyzeSupplyChainSignals(dir, graph, { fetchPublishTime: async () => undefined });
+    const signals = await analyzeSupplyChainSignals(dir, graph, { fetchVersionInfo: async () => undefined });
     assert.equal(signals.recentlyPublished.length, 0);
     assert.equal(signals.releaseAge.checked, 0);
     assert.equal(signals.releaseAge.notChecked.lookup_failed, 3);
@@ -76,7 +81,7 @@ test('analyzeSupplyChainSignals - lookup cap leaves the remainder not-checked; n
     const graph = await buildDependencyGraph(dir);
     const signals = await analyzeSupplyChainSignals(dir, graph, {
       maxPublishLookups: 1,
-      fetchPublishTime: async () => new Date('2020-01-01T00:00:00Z'),
+      fetchVersionInfo: async (_n, v) => info(v, new Date('2020-01-01T00:00:00Z')),
     });
     assert.equal(signals.releaseAge.checked, 1);
     assert.equal(signals.releaseAge.notChecked.lookup_cap, 2);
@@ -90,9 +95,9 @@ test('analyzeSupplyChainSignals - minReleaseAgeDays 0 turns release-age lookups 
     let lookups = 0;
     const signals = await analyzeSupplyChainSignals(dir, graph, {
       minReleaseAgeDays: 0,
-      fetchPublishTime: async () => {
+      fetchVersionInfo: async (_n, v) => {
         lookups++;
-        return new Date();
+        return info(v, new Date());
       },
     });
     assert.equal(lookups, 0);
@@ -104,8 +109,37 @@ test('analyzeSupplyChainSignals - minReleaseAgeDays 0 turns release-age lookups 
 test('analyzeSupplyChainSignals - a larger threshold flags versions a smaller one lets through', () =>
   withProject(async (dir) => {
     const graph = await buildDependencyGraph(dir);
-    const fetchPublishTime = async () => new Date('2026-11-01T00:00:00Z');
+    const fetchVersionInfo = async (_n: string, v: string) => info(v, new Date('2026-11-01T00:00:00Z'));
     const now = new Date('2026-11-27T00:00:00Z');
-    assert.equal((await analyzeSupplyChainSignals(dir, graph, { now, fetchPublishTime, minReleaseAgeDays: 7 })).recentlyPublished.length, 0);
-    assert.equal((await analyzeSupplyChainSignals(dir, graph, { now, fetchPublishTime, minReleaseAgeDays: 30 })).recentlyPublished.length, 3);
+    assert.equal((await analyzeSupplyChainSignals(dir, graph, { now, fetchVersionInfo, minReleaseAgeDays: 7 })).recentlyPublished.length, 0);
+    assert.equal((await analyzeSupplyChainSignals(dir, graph, { now, fetchVersionInfo, minReleaseAgeDays: 30 })).recentlyPublished.length, 3);
+  }));
+
+test('analyzeSupplyChainSignals - flags a provenance regression and a publisher change versus the previous version', () =>
+  withProject(async (dir) => {
+    const graph = await buildDependencyGraph(dir);
+    const old = new Date('2020-01-01T00:00:00Z');
+    const signals = await analyzeSupplyChainSignals(dir, graph, {
+      fetchVersionInfo: async (name, version) => {
+        if (name === 'direct') {
+          return info(version, old, { publisher: 'mallory', hasProvenance: false, previous: { version: '0.9.0', publisher: 'alice', hasProvenance: true } });
+        }
+        if (name === 'fresh') {
+          return info(version, old, { publisher: 'alice', hasProvenance: true, previous: { version: '0.9.0', publisher: 'alice', hasProvenance: true } });
+        }
+        // first-ever release: nothing to compare against, so nothing to flag
+        return info(version, old, { previous: undefined });
+      },
+    });
+    assert.deepEqual(signals.provenanceRegressions.map((f) => [f.package, f.previousVersion]), [['direct', '0.9.0']]);
+    assert.deepEqual(signals.publisherChanges.map((f) => [f.package, f.publisher, f.previousPublisher]), [['direct', 'mallory', 'alice']]);
+  }));
+
+test('analyzeSupplyChainSignals - an unrecorded publisher is never reported as a change', () =>
+  withProject(async (dir) => {
+    const graph = await buildDependencyGraph(dir);
+    const signals = await analyzeSupplyChainSignals(dir, graph, {
+      fetchVersionInfo: async (_n, v) => info(v, new Date('2020-01-01T00:00:00Z'), { publisher: undefined, previous: { version: '0.9.0', publisher: 'alice', hasProvenance: false } }),
+    });
+    assert.deepEqual(signals.publisherChanges, []);
   }));

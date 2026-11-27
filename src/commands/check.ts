@@ -217,7 +217,7 @@ export async function checkCommand(options: CheckOptions = {}): Promise<void> {
     const securityResult = securityEnabled
       ? await profiler.time('analyzeSecurityVulnerabilities (OSV.dev network call)', async () => {
           const graph = await buildDependencyGraph(cwd);
-          return analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+          return analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
         })
       : null;
     const aiSdkExposure = await profiler.time('analyzeAiSdkExposure', () =>
