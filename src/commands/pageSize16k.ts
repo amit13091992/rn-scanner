@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { analyzePageSize } from '../analyzers/pageSize.js';
+import { analyzePageSizeBuildConfig, describePageSizeDeadline, formatPageSizeDeadline } from '../analyzers/pageSizeReadiness.js';
 import { printHeader, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
+import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
 function noNativeLibrariesMessage(cwd: string, count: number): string {
@@ -10,6 +12,18 @@ function noNativeLibrariesMessage(cwd: string, count: number): string {
   return existsSync(join(cwd, 'android'))
     ? base
     : `${base}. There is no android/ directory, so nothing has been built: generate or restore it (\`npx expo prebuild --platform android\` for Expo projects), build the app, then re-run this check against the generated .so files or your APK/AAB.`;
+}
+
+function printBuildRequirements(requirements: EnvironmentRequirement[]): void {
+  for (const r of requirements) {
+    const detail = `${r.name}: ${r.current} (requires ${r.required})`;
+    if (r.status === 'warning') {
+      printWarning(detail);
+      if (r.reason) console.log(`  └─ ${r.reason}`);
+    } else {
+      printSuccess(detail);
+    }
+  }
 }
 
 export interface PageSize16kOptions {
@@ -67,6 +81,8 @@ export async function pageSize16kCommand(options: PageSize16kOptions = {}): Prom
       printWarning(`${unreadable.length} package(s) shipped .so files that could not be read or parsed — alignment could not be determined`);
       unreadable.forEach((r) => console.log(`  └─ ${r.package}@${r.version}`));
     }
+    printBuildRequirements(analyzePageSizeBuildConfig(cwd));
+    printInfo(formatPageSizeDeadline(describePageSizeDeadline()));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (jsonMode) {

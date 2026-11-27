@@ -13,7 +13,7 @@
     "build:chmod": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
     "test": "tsx --test",
     "lint": "eslint .",
-    "validate:workflows": "action-validator action.yml && action-validator .github/workflows/ci.yml && action-validator .github/workflows/preflight-dogfood.yml",
+    "validate:workflows": "action-validator action.yml && action-validator .github/workflows/ci.yml && action-validator .github/workflows/preflight-dogfood.yml && action-validator .github/workflows/registry-staleness.yml && action-validator .github/workflows/release.yml",
     "prepare": "npm run build"
   },
   "keywords": [
@@ -65,5 +65,9 @@
     "globals": "^17.13.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amit13091992/rn-scanner.git"
   }
 }

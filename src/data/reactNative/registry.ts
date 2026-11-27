@@ -337,4 +337,24 @@ export const REACT_NATIVE_REQUIREMENTS_REGISTRY: ReactNativeNativeRequirements[]
     },
     ios: { xcode: '16.0', deploymentTarget: '15.1', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
   },
+  {
+    // RN 0.89 — ESTIMATED. Branch cut 2026-11-03, stable scheduled 2026-12-07 (RC only at time
+    // of writing), so every value is carried forward from 0.88 until the v0.89.0 tag and
+    // 0.89-stable template can be read. The 0.88 post says 0.89 targets Swift Package Manager as
+    // the iOS default (CocoaPods opt-out) — unconfirmed here, so no iOS baseline change is made.
+    version: '0.89',
+    node: '22.13.0',
+    android: {
+      jdk: '17',
+      kotlin: '2.2.0',
+      agp: '9.2.1',
+      gradle: '9.4.1',
+      compileSdk: '37',
+      targetSdk: '36',
+      minSdk: '24',
+      ndk: '27.1.12297006',
+      buildToolsVersion: '37.0.0',
+    },
+    ios: { xcode: '16.0', deploymentTarget: '15.1', cocoapods: '1.15.0', ruby: '2.7.4', swift: '5.0' },
+  },
 ];

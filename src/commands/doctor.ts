@@ -7,6 +7,7 @@ import { analyzeAndroidEnvironment } from '../analyzers/androidEnvironment.js';
 import { analyzeIosEnvironment } from '../analyzers/iosEnvironment.js';
 import { analyzeNodeEnvironment } from '../analyzers/nodeEnvironment.js';
 import { analyzePageSize } from '../analyzers/pageSize.js';
+import { analyzePageSizeBuildConfig, describePageSizeDeadline, formatPageSizeDeadline } from '../analyzers/pageSizeReadiness.js';
 import { analyzeIosPackage } from '../analyzers/iosPackage.js';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import type { EnvironmentRequirement } from '../types/environmentRequirement.js';
@@ -149,6 +150,9 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
       reason: `${r.libraries.filter((l) => !l.is16kAligned).length} native librar${r.libraries.filter((l) => !l.is16kAligned).length === 1 ? 'y is' : 'ies are'} not 16KB-page-size safe`,
     }));
 
+    const pageSizeBuildConfig = analyzePageSizeBuildConfig(cwd);
+    const pageSizeDeadline = describePageSizeDeadline();
+
     const iosPackage = options.ipa ? analyzeIosPackage(options.ipa) : null;
 
     const verdict = combineVerdicts([
@@ -156,6 +160,7 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
       verdictFromRequirements(androidEnvironment),
       verdictFromRequirements(iosEnvironment),
       verdictFromRequirements(pageSizeRequirements),
+      verdictFromRequirements(pageSizeBuildConfig),
     ]);
 
     if (jsonMode) {
@@ -174,6 +179,8 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
         androidEnvironment,
         iosEnvironment,
         pageSize16k: pageSize,
+        pageSize16kBuild: pageSizeBuildConfig,
+        pageSize16kDeadline: pageSizeDeadline,
         ...(iosPackage ? { iosPackage } : {}),
         ...(options.profile ? { profile: { steps: profiler.report(), totalMs: profiler.totalMs() } } : {}),
       };
@@ -237,6 +244,8 @@ export async function doctorCommand(options: DoctorOptions = {}): Promise<void> 
     if (pageSizeUnreadable.length > 0) {
       printWarning(`${pageSizeUnreadable.length} package(s) shipped .so files that could not be read or parsed — alignment could not be determined`);
     }
+    printEnvironmentRequirements(pageSizeBuildConfig);
+    printInfo(formatPageSizeDeadline(pageSizeDeadline));
 
     if (iosPackage) {
       printSection('iOS Package (--ipa)');

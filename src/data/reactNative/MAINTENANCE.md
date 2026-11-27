@@ -36,6 +36,9 @@ or the version history at https://react-native-community.github.io/upgrade-helpe
 | 0.85 - 0.86 | Estimated | Extrapolated from 0.83/0.84/0.87 trend |
 | 0.87 | Partially confirmed | compileSdk/buildTools 37, minCompileSdk 34, AGP 9.0 floor, and Node 22+ from public 0.87 release notes; JDK/Kotlin/Gradle/NDK and all iOS values are still estimated |
 | 0.88 | Mostly confirmed | Released 2026-10-15. Node, Kotlin 2.2.0, AGP 9.2.1, Gradle 9.4.1, SDK levels, buildTools, NDK and iOS 15.1 deployment target read from the v0.88.0 tag + 0.88-stable template; JDK, Xcode, CocoaPods, Ruby, Swift still carried forward from 0.87 |
+| 0.89 | Estimated | Added 2026-11-27 while only RCs existed (stable scheduled 2026-12-07); every value carried forward from 0.88. Re-read the v0.89.0 tag + template, especially iOS (SwiftPM default) |
+
+`.github/workflows/registry-staleness.yml` (weekly, `scripts/check-registry-staleness.mjs`) now opens an issue when npm's `latest` for `react-native` or `expo` is newer than this registry and `data/expo/registry.ts` cover. It only detects a *missing* entry — it can't tell that an existing "Estimated" row is wrong.
 
 Any entry marked "Estimated" should be replaced with a "Confirmed" value (and this table
 updated) as soon as that RN version actually ships and its template can be diffed directly.

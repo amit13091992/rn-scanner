@@ -2,6 +2,8 @@ import { isOffline } from '../utils/network.js';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { analyzeSecurityVulnerabilities, type SecurityAnalysisResult } from '../analyzers/securityVulnerabilities.js';
+import { analyzeSupplyChainSignals } from '../analyzers/supplyChainSignals.js';
+import type { SupplyChainSignals } from '../types/supplyChain.js';
 import { loadConfig } from '../utils/config.js';
 import { listWorkspaceTargets } from '../utils/workspaceRun.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
@@ -54,13 +56,14 @@ const SEVERITY_ORDER = ['critical', 'high', 'moderate', 'low', 'unknown'];
  *  single-project and `--all-workspaces` paths share the exact same analysis. */
 async function scanOneProject(
   cwd: string
-): Promise<{ result: SecurityAnalysisResult; graph: DependencyGraph | null }> {
+): Promise<{ result: SecurityAnalysisResult; graph: DependencyGraph | null; supplyChain: SupplyChainSignals }> {
   const { config } = loadConfig(cwd);
   const packageJson = await readPackageJson(cwd);
   const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
   const graph = await buildDependencyGraph(cwd);
   const result = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
-  return { result, graph };
+  const supplyChain = await analyzeSupplyChainSignals(cwd, graph);
+  return { result, graph, supplyChain };
 }
 
 function printSecurityResult(
@@ -97,6 +100,31 @@ function printSecurityResult(
   printInfo(`${result.results.length} package(s) affected (${affectedDirect} direct, ${affectedTransitive} transitive)`);
 }
 
+function printSupplyChain(signals: SupplyChainSignals): void {
+  if (!signals.scanned) return;
+  const { installScripts, recentlyPublished, releaseAge } = signals;
+  const notChecked = Object.values(releaseAge.notChecked).reduce((sum, n) => sum + (n ?? 0), 0);
+  if (installScripts.length === 0 && recentlyPublished.length === 0 && notChecked === 0) return;
+
+  printSection('Supply-chain signals (informational — does not affect the exit code)');
+  if (installScripts.length > 0) {
+    printWarning(`${installScripts.length} installed package(s) declare install-time scripts (run on \`npm install\`; many are legitimate, e.g. native-binary downloaders):`);
+    installScripts.forEach((s) =>
+      console.log(`  └─ ${s.package}@${s.version} (${s.hooks.join(', ')})${s.direct ? '' : ' [transitive]'}`)
+    );
+  }
+  if (recentlyPublished.length > 0) {
+    printWarning(`${recentlyPublished.length} package version(s) were published less than ${releaseAge.minAgeDays} days ago:`);
+    recentlyPublished.forEach((r) =>
+      console.log(`  └─ ${r.package}@${r.version} (${r.ageDays} day${r.ageDays === 1 ? '' : 's'} old)${r.direct ? '' : ' [transitive]'}`)
+    );
+  }
+  if (notChecked > 0) {
+    const causes = Object.entries(releaseAge.notChecked).map(([reason, n]) => `${n} ${reason.replace(/_/g, ' ')}`).join(', ');
+    printInfo(`Release age not checked for ${notChecked} package(s) (${causes}); only direct dependencies and install-script packages are looked up.`);
+  }
+}
+
 function exceedsThreshold(result: SecurityAnalysisResult, threshold: VulnerabilitySeverity | 'none'): boolean {
   return meetsFailThreshold(result.summary, threshold);
 }
@@ -105,19 +133,20 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
   const targets = listWorkspaceTargets(cwd);
   if (targets.length === 0) {
     // Not actually a workspace — --all-workspaces is a no-op, fall back to scanning cwd alone.
-    const { result, graph } = await scanOneProject(cwd);
+    const { result, graph, supplyChain } = await scanOneProject(cwd);
     if (jsonMode) {
-      emitStructuredOutput({ ...result, hierarchyComplete: graph?.hierarchyComplete ?? false }, 'Security Scan', options);
+      emitStructuredOutput({ ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, supplyChain }, 'Security Scan', options);
     } else {
       printSecurityResult(result, graphManagerLabel(graph), { appName: appNameOf(cwd), verbose: !!options.verbose, summaryOnly: !!options.summary });
+      printSupplyChain(supplyChain);
     }
     return exceedsThreshold(result, threshold);
   }
 
   const perPackage = await Promise.all(
     targets.map(async (target) => {
-      const { result, graph } = await scanOneProject(target.dir);
-      return { package: target.name, dir: target.dir, ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, manager: graph?.manager };
+      const { result, graph, supplyChain } = await scanOneProject(target.dir);
+      return { package: target.name, dir: target.dir, ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, manager: graph?.manager, supplyChain };
     })
   );
 
@@ -137,6 +166,7 @@ async function runAcrossWorkspaces(cwd: string, options: SecurityOptions, jsonMo
         pkg.manager ? { manager: pkg.manager, hierarchyComplete: pkg.hierarchyComplete } : null,
         { appName: pkg.package, verbose: !!options.verbose, summaryOnly: !!options.summary }
       );
+      printSupplyChain(pkg.supplyChain);
     });
   }
 
@@ -175,15 +205,16 @@ export async function securityCommand(options: SecurityOptions = {}): Promise<vo
     if (options.allWorkspaces) {
       criticalOrHighFound = await runAcrossWorkspaces(cwd, options, jsonMode, threshold);
     } else {
-      const { result, graph } = await scanOneProject(cwd);
+      const { result, graph, supplyChain } = await scanOneProject(cwd);
       if (jsonMode) {
         emitStructuredOutput(
-          { ...result, hierarchyComplete: graph?.hierarchyComplete ?? false },
+          { ...result, hierarchyComplete: graph?.hierarchyComplete ?? false, supplyChain },
           'Security Scan',
           options
         );
       } else {
         printSecurityResult(result, graphManagerLabel(graph), { appName: appNameOf(cwd), verbose: !!options.verbose, summaryOnly: !!options.summary });
+        printSupplyChain(supplyChain);
       }
       // A scan that could not run is not a clean scan — fail CI unless the user asked for --offline.
       criticalOrHighFound = exceedsThreshold(result, threshold) || (!result.scanned && !isOffline());
