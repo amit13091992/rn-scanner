@@ -32,7 +32,7 @@ yarn/pnpm/bun transitive graph + workspace cross-linking, `--all-workspaces` eve
   instead of just `--cwd`'s single package.
 - GitHub Action + PR comment integration (`action.yml`, `scripts/post-pr-comment.mjs`), including
   an `all-workspaces: 'true'` input that posts one combined PR comment across every workspace
-  package; dogfooded by `.github/workflows/preflight-dogfood.yml` (single-package path posts a
+  package; self-tested by `.github/workflows/action-self-test.yml` (single-package path posts a
   real comment; `--all-workspaces` path is smoke-tested against a throwaway fixture, not posted,
   to avoid colliding with the single-package comment).
 - CI: `.github/workflows/ci.yml` — `build-and-test` job (build+test+lint+`npm audit`, Node
