@@ -1,5 +1,6 @@
 import { buildDependencyGraph, collectAllPackageVersions } from '../utils/dependencyGraph.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
+import { loadConfig } from '../utils/config.js';
 import { printHeader, printSection, printSuccess, printWarning, printError, printInfo } from '../utils/terminal.js';
 import { emitStructuredOutput, type HtmlOption } from '../utils/htmlOutput.js';
 
@@ -71,7 +72,10 @@ export async function diffCommand(options: DiffOptions): Promise<void> {
     const newlyIntroduced = [...added.map((a) => ({ name: a.name, version: a.version })), ...changed.map((c) => ({ name: c.name, version: c.toVersion }))];
     const securityScan = await analyzeSecurityVulnerabilities(
       newlyIntroduced.map((p) => ({ name: p.name, requestedVersion: p.version, resolvedVersion: p.version, type: 'dependency' as const })),
-      []
+      [],
+      null,
+      // The head side's config decides: it is the project the change would land in.
+      { source: loadConfig(options.to).config.knownMalwareFeed, cwd: options.to }
     );
 
     const result = { added, removed, changed, security: securityScan };

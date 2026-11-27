@@ -101,3 +101,30 @@ test('diffCommand - a missing project directory exits 1 instead of passing silen
     cleanup(fromDir);
   }
 });
+
+test('diffCommand - a package newly added at a version in the head project\'s knownMalwareFeed is a critical finding', async () => {
+  const fromDir = makeTempDir();
+  const toDir = makeTempDir();
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => ({ ok: false }) as Response) as typeof fetch;
+  try {
+    writeProject(fromDir, { keep: '1.0.0' });
+    writeProject(toDir, { keep: '1.0.0', 'evil-pkg': '1.2.3' });
+    writeFileSync(
+      join(toDir, 'malware-feed.json'),
+      JSON.stringify([{ packageName: 'evil-pkg', versions: ['1.2.3'], incident: 'Test incident', summary: 'Backdoored release', reference: 'https://example.test/advisory' }])
+    );
+    writeFileSync(join(toDir, '.rn-dep-scanner.json'), JSON.stringify({ knownMalwareFeed: 'malware-feed.json' }));
+
+    const { output } = await captureStdout(() => diffCommand({ from: fromDir, to: toDir, json: true }));
+    const result = JSON.parse(output);
+
+    assert.equal(result.security.summary.critical, 1);
+    assert.equal(result.security.results[0].vulnerabilities[0].id, 'RNDS-MALWARE-evil-pkg@1.2.3');
+    assert.equal(result.security.malwareFeed.entries, 1);
+  } finally {
+    globalThis.fetch = original;
+    cleanup(fromDir);
+    cleanup(toDir);
+  }
+});
