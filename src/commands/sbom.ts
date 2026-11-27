@@ -1,29 +1,32 @@
-import { readPackageJson } from '../utils/packageJson.js';
-import { buildDependencyGraph, collectAllPackageVersions } from '../utils/dependencyGraph.js';
+import { createRequire } from 'node:module';
+import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
+import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { readInstalledPackageLicense } from '../detectors/license.js';
+import { readNpmLockfileIntegrity } from '../detectors/lockfileIntegrity.js';
+import { buildCycloneDxBom } from '../analyzers/sbom.js';
+import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
+import { loadConfig } from '../utils/config.js';
 import { printError } from '../utils/terminal.js';
 import { formatJsonAsHtml, emitHtml, type HtmlOption } from '../utils/htmlOutput.js';
+
+const require = createRequire(import.meta.url);
 
 export interface SbomOptions {
   cwd?: string;
   html?: HtmlOption;
-}
-
-interface CycloneDxComponent {
-  type: 'library';
-  name: string;
-  version: string;
-  purl: string;
-  licenses?: Array<{ license: { id?: string; name?: string } }>;
+  /** Also embed a CycloneDX `vulnerabilities` (VEX) section from an OSV.dev scan. */
+  vex?: boolean;
 }
 
 /**
- * Renders a CycloneDX 1.5 SBOM (JSON, no dependency needed — it's a fixed schema, not a
- * generated one) from the same dependency graph `why`/`tree`/`security` already traverse. This
- * is an output format on existing data, not new detection — coverage is complete for npm
- * (`hierarchyComplete: true`), direct-only for yarn/pnpm/bun (same known limitation as those
- * commands). Always writes to stdout, `check`/`security`-style, so it composes with shell
- * redirection (`npx rn-dep-scanner sbom > sbom.json`) rather than needing its own `--output` flag.
+ * Renders a CycloneDX 1.6 SBOM (JSON, no dependency needed — it's a fixed schema, not a
+ * generated one) from the same dependency graph `why`/`tree`/`security` already traverse: a
+ * component per installed package (purl, license, dev-only marker, npm-lockfile integrity hash),
+ * the real dependency edges, and with `--vex` a `vulnerabilities` section whose entries are all
+ * `in_triage` (reachability is never assessed). Coverage is complete for npm, yarn, pnpm and bun
+ * graphs alike, but hashes come from `package-lock.json` only. Always writes to stdout,
+ * `check`/`security`-style, so it composes with shell redirection
+ * (`npx rn-dep-scanner sbom > sbom.json`) rather than needing its own `--output` flag.
  */
 export async function sbomCommand(options: SbomOptions = {}): Promise<void> {
   const cwd = options.cwd || process.cwd();
@@ -42,32 +45,28 @@ export async function sbomCommand(options: SbomOptions = {}): Promise<void> {
       }
       noGraphFound = true;
     } else {
-      const packages = collectAllPackageVersions(graph);
-      const components: CycloneDxComponent[] = packages.map((pkg) => {
-        const license = readInstalledPackageLicense(cwd, pkg.name);
-        return {
-          type: 'library',
-          name: pkg.name,
-          version: pkg.version,
-          purl: `pkg:npm/${encodeURIComponent(pkg.name).replace(/%40/g, '@').replace(/%2F/g, '/')}@${pkg.version}`,
-          ...(license ? { licenses: [{ license: { id: license } }] } : {}),
-        };
-      });
+      let vulnerabilities;
+      if (options.vex) {
+        const { config } = loadConfig(cwd);
+        const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
+        const scan = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+        if (!scan.scanned) {
+          // An empty vulnerabilities list in a VEX document asserts "none known" — never emit
+          // that when the scan could not run.
+          throw new Error(`Cannot build the VEX section: ${scan.error ?? 'vulnerability scan did not run'}`);
+        }
+        vulnerabilities = scan.results;
+      }
 
-      const sbom = {
-        bomFormat: 'CycloneDX',
-        specVersion: '1.5',
-        version: 1,
-        metadata: {
-          timestamp: new Date().toISOString(),
-          component: {
-            type: 'application',
-            name: packageJson.name ?? 'unknown',
-            version: packageJson.version ?? '0.0.0',
-          },
-        },
-        components,
-      };
+      const { version: toolVersion } = require('../../package.json') as { version: string };
+      const sbom = buildCycloneDxBom({
+        graph,
+        app: { name: packageJson.name ?? 'unknown', version: packageJson.version ?? '0.0.0' },
+        tool: { name: 'rn-dep-scanner', version: toolVersion },
+        licenseOf: (name) => readInstalledPackageLicense(cwd, name),
+        hashes: readNpmLockfileIntegrity(cwd),
+        ...(vulnerabilities ? { vulnerabilities } : {}),
+      });
 
       if (options.html) {
         emitHtml(formatJsonAsHtml('SBOM', sbom), typeof options.html === 'string' ? options.html : undefined);

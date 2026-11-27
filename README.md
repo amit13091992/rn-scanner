@@ -324,7 +324,7 @@ Four read-only tools (nothing is installed, written or executed):
 
 | Tool | What it does |
 |---|---|
-| `check_package` | Before adding a dependency: does the name exist on npm (a missing name is a likely hallucinated or typo'd package), is the package or version brand new, is usage implausibly low, does it run install-time scripts, is it deprecated or in a known supply-chain incident, does OSV.dev list advisories for the version. Returns `ok` / `review` / `avoid` / `unknown` plus the signals — `ok` only when every check ran. |
+| `check_package` | Before adding a dependency: does the name exist on npm (a missing name is a likely hallucinated or typo'd package), does the name closely resemble a popular package (a typosquat), is the package or version brand new, is usage implausibly low, does it run install-time scripts, is it deprecated or in a known supply-chain incident, does OSV.dev list advisories for the version. Returns `ok` / `review` / `avoid` / `unknown` plus the signals — `ok` only when every check ran. |
 | `security_scan` | Same JSON as `security --json`. |
 | `check_dependencies` | Same JSON as `check --json`. |
 | `doctor` | Same JSON as `doctor --json`. |
@@ -348,11 +348,25 @@ behavior as `security` above.
 ### `sbom`
 
 ```bash
-npx rn-dep-scanner sbom [--html [path]] [--cwd <path>]
+npx rn-dep-scanner sbom [--vex] [--html [path]] [--cwd <path>]
 ```
 
-Exports a CycloneDX 1.5 Software Bill of Materials to stdout as JSON (no `--json` flag needed —
-JSON is simply the default output; pass `--html` for an HTML rendering instead).
+Exports a CycloneDX **1.6** Software Bill of Materials to stdout as JSON (no `--json` flag needed —
+JSON is simply the default output; pass `--html` for an HTML rendering instead). One component
+per installed package with a purl `bom-ref`, license (SPDX id, expression, or free-text name),
+dev-only marker, and — for npm lockfiles — the registry integrity hash; plus a `dependencies`
+section with the real edges. Scoped packages use `group` + `name` and a percent-encoded purl
+(`pkg:npm/%40scope/name@1.0.0`).
+
+`--vex` also embeds a CycloneDX `vulnerabilities` section from an OSV.dev scan, so one file
+carries both the inventory and the known findings. Every entry is `in_triage`: reachability is
+never assessed, so nothing is claimed exploitable or not-affected. If the scan can't run (offline,
+OSV unreachable) the command fails rather than print a VEX with an empty list that would read as
+"no known vulnerabilities". Advisories you list in `ignoreVulnerabilities` are left out.
+
+Limits: hashes come from `package-lock.json` only (yarn/pnpm/bun components have none); license
+tokens are not checked against the SPDX list; the output has not been validated against the
+official CycloneDX 1.6 JSON schema.
 
 ### `renovate-config`
 
