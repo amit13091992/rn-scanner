@@ -70,7 +70,9 @@ export async function analyzeSupplyChainSignals(
   const recentlyPublished: RecentlyPublishedFinding[] = [];
   let checked = 0;
 
-  if (isOffline() && !options.fetchPublishTime) {
+  if (minAgeDays === 0) {
+    // Turned off by the user — not a failed check, so nothing is reported as not-checked.
+  } else if (isOffline() && !options.fetchPublishTime) {
     bump('offline', candidates.length);
   } else {
     const cap = options.maxPublishLookups ?? DEFAULT_MAX_PUBLISH_LOOKUPS;

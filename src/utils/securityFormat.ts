@@ -40,6 +40,16 @@ export function parseFailOn(value: string | undefined): VulnerabilitySeverity | 
   throw new Error(`Invalid --fail-on value "${value}" — use critical, high, moderate, low or none`);
 }
 
+/** `--min-release-age <days>`: a non-negative whole number of days; 0 turns release-age lookups off. */
+export function parseMinReleaseAge(value: string | number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const text = String(value).trim();
+  if (!/^\d+$/.test(text)) {
+    throw new Error(`Invalid --min-release-age value "${value}" — use a non-negative whole number of days (0 disables the check)`);
+  }
+  return Number(text);
+}
+
 /** The single version that clears every advisory on a package: the highest `fixedVersion` among them. */
 export function highestFixedVersion(result: PackageVulnerabilityResult): string | undefined {
   let best: string | undefined;

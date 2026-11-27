@@ -17,6 +17,8 @@ export interface RnDepScannerConfig {
   bannedPackages?: string[];
   /** The most severe OSV vulnerability severity this project will tolerate — 'critical'/'high'/'moderate'/'low'. A finding at or above this severity is a `policy` violation. Omitted means no severity gate. */
   maxVulnerabilitySeverity?: 'critical' | 'high' | 'moderate' | 'low';
+  /** `security`'s "published too recently" threshold in days (default 7; 0 turns the release-age lookups off). Overridden by `--min-release-age`. */
+  minReleaseAgeDays?: number;
   /** Bundle-size budget evaluated by `size diff` (KiB limits; see `types/bundleSize.ts`). */
   sizeBudget?: BundleBudget;
 }
