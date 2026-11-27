@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { readPackageJson, getAllDependenciesWithResolution } from '../utils/packageJson.js';
 import { buildDependencyGraph } from '../utils/dependencyGraph.js';
 import { readInstalledPackageLicense } from '../detectors/license.js';
-import { readNpmLockfileIntegrity } from '../detectors/lockfileIntegrity.js';
+import { readLockfileIntegrity } from '../detectors/lockfileIntegrity.js';
 import { buildCycloneDxBom } from '../analyzers/sbom.js';
 import { analyzeSecurityVulnerabilities } from '../analyzers/securityVulnerabilities.js';
 import { loadConfig } from '../utils/config.js';
@@ -21,10 +21,10 @@ export interface SbomOptions {
 /**
  * Renders a CycloneDX 1.6 SBOM (JSON, no dependency needed — it's a fixed schema, not a
  * generated one) from the same dependency graph `why`/`tree`/`security` already traverse: a
- * component per installed package (purl, license, dev-only marker, npm-lockfile integrity hash),
+ * component per installed package (purl, license, dev-only marker, lockfile integrity hash),
  * the real dependency edges, and with `--vex` a `vulnerabilities` section whose entries are all
  * `in_triage` (reachability is never assessed). Coverage is complete for npm, yarn, pnpm and bun
- * graphs alike, but hashes come from `package-lock.json` only. Always writes to stdout,
+ * graphs alike; hashes come from npm, yarn classic, pnpm and bun lockfiles (not yarn berry). Always writes to stdout,
  * `check`/`security`-style, so it composes with shell redirection
  * (`npx rn-dep-scanner sbom > sbom.json`) rather than needing its own `--output` flag.
  */
@@ -49,7 +49,7 @@ export async function sbomCommand(options: SbomOptions = {}): Promise<void> {
       if (options.vex) {
         const { config } = loadConfig(cwd);
         const dependencies = await getAllDependenciesWithResolution(packageJson, cwd);
-        const scan = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph);
+        const scan = await analyzeSecurityVulnerabilities(dependencies, config.ignoreVulnerabilities, graph, { source: config.knownMalwareFeed, cwd });
         if (!scan.scanned) {
           // An empty vulnerabilities list in a VEX document asserts "none known" — never emit
           // that when the scan could not run.
@@ -64,7 +64,7 @@ export async function sbomCommand(options: SbomOptions = {}): Promise<void> {
         app: { name: packageJson.name ?? 'unknown', version: packageJson.version ?? '0.0.0' },
         tool: { name: 'rn-dep-scanner', version: toolVersion },
         licenseOf: (name) => readInstalledPackageLicense(cwd, name),
-        hashes: readNpmLockfileIntegrity(cwd),
+        hashes: readLockfileIntegrity(cwd),
         ...(vulnerabilities ? { vulnerabilities } : {}),
       });
 
