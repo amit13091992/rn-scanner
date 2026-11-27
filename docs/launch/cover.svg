@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="627" viewBox="0 0 1200 627">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#070B16"/><stop offset="1" stop-color="#101A33"/></linearGradient>
+    <radialGradient id="g1" cx="0.85" cy="0.2" r="0.6"><stop offset="0" stop-color="#7C5CFF" stop-opacity="0.45"/><stop offset="1" stop-color="#7C5CFF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="0.1" cy="1" r="0.6"><stop offset="0" stop-color="#61DAFB" stop-opacity="0.25"/><stop offset="1" stop-color="#61DAFB" stop-opacity="0"/></radialGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#61DAFB"/><stop offset="1" stop-color="#A78BFA"/></linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000" flood-opacity="0.55"/></filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#fff" stroke-opacity="0.035"/></pattern>
+  </defs>
+  <rect width="1200" height="627" fill="url(#bg)"/>
+  <rect width="1200" height="627" fill="url(#grid)"/>
+  <rect width="1200" height="627" fill="url(#g1)"/>
+  <rect width="1200" height="627" fill="url(#g2)"/>
+
+  <!-- left copy -->
+  <g font-family="Helvetica, Arial, sans-serif">
+    <rect x="70" y="70" width="236" height="38" rx="19" fill="#61DAFB" fill-opacity="0.12" stroke="#61DAFB" stroke-opacity="0.5"/>
+    <circle cx="94" cy="89" r="6" fill="#9BE564"/>
+    <text x="110" y="96" font-size="18" font-weight="700" fill="#61DAFB" letter-spacing="1.5">NOW ON NPM · v1.3.22</text>
+    <text x="70" y="215" font-size="44" font-weight="800" fill="#fff">rn-dep-<tspan fill="url(#acc)">scanner</tspan></text>
+    <text x="70" y="285" font-size="27" font-weight="500" fill="#C9D6EE">Catch React Native upgrade</text>
+    <text x="70" y="322" font-size="27" font-weight="500" fill="#C9D6EE">breakage before it ships.</text>
+    <g font-size="19" font-weight="600" fill="#E6EDF7">
+      <rect x="70" y="410" width="146" height="38" rx="19" fill="#fff" fill-opacity="0.08" stroke="#fff" stroke-opacity="0.18"/><text x="90" y="435">🔐 Security</text>
+      <rect x="226" y="410" width="172" height="38" rx="19" fill="#fff" fill-opacity="0.08" stroke="#fff" stroke-opacity="0.18"/><text x="246" y="435">🩺 Toolchain</text>
+      <rect x="70" y="458" width="150" height="38" rx="19" fill="#fff" fill-opacity="0.08" stroke="#fff" stroke-opacity="0.18"/><text x="90" y="483">⬆️ Upgrades</text>
+      <rect x="230" y="458" width="168" height="38" rx="19" fill="#fff" fill-opacity="0.08" stroke="#fff" stroke-opacity="0.18"/><text x="250" y="483">📦 25+ cmds</text>
+    </g>
+    <rect x="70" y="534" width="328" height="50" rx="12" fill="#050810" stroke="#2A3A5C"/>
+    <text x="90" y="567" font-family="Menlo, Courier, monospace" font-size="22" fill="#9BE564">$ <tspan fill="#fff">npx rn-dep-scanner</tspan></text>
+  </g>
+
+  <!-- terminal card -->
+  <g filter="url(#sh)">
+    <rect x="450" y="70" width="690" height="440" rx="16" fill="#0A1020" stroke="#2A3A5C"/>
+    <path d="M450 86a16 16 0 0 1 16-16h658a16 16 0 0 1 16 16v38H450z" fill="#121B33"/>
+    <circle cx="478" cy="97" r="7" fill="#FF5F57"/><circle cx="500" cy="97" r="7" fill="#FEBC2E"/><circle cx="522" cy="97" r="7" fill="#28C840"/>
+    <text x="795" y="103" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#8FA3C4">my-app — rn-dep-scanner doctor</text>
+  </g>
+  <g font-family="Menlo, Courier, monospace" font-size="21">
+    <text x="480" y="165" fill="#8FA3C4">$ npx rn-dep-scanner doctor</text>
+    <text x="480" y="210" fill="#E6EDF7">React Native 0.76.9 · Hermes <tspan fill="#9BE564">on</tspan></text>
+    <text x="480" y="250" fill="#9BE564">✓</text><text x="510" y="250" fill="#E6EDF7">Node 22        </text>
+    <text x="480" y="288" fill="#9BE564">✓</text><text x="510" y="288" fill="#E6EDF7">JDK 17 · Gradle 8.10</text>
+    <text x="480" y="326" fill="#FEBC2E">⚠</text><text x="510" y="326" fill="#E6EDF7">Xcode 15 → 16 needed</text>
+    <text x="480" y="364" fill="#FF5F57">✕</text><text x="510" y="364" fill="#E6EDF7">3 libs lack New Arch support</text>
+    <text x="480" y="402" fill="#FEBC2E">⚠</text><text x="510" y="402" fill="#E6EDF7">1 high-severity advisory</text>
+  </g>
+  <rect x="480" y="432" width="250" height="52" rx="26" fill="#FF5F57" fill-opacity="0.15" stroke="#FF5F57"/>
+  <text x="605" y="466" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="800" fill="#FF8A84" letter-spacing="2">BLOCKED</text>
+  <text x="750" y="466" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#8FA3C4">fix before you upgrade</text>
+
+  <text x="1140" y="590" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#8FA3C4">npmjs.com/package/rn-dep-scanner</text>
+  <text x="1140" y="560" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#61DAFB">github.com/amit13091992/rn-scanner</text>
+</svg>
